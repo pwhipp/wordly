@@ -159,8 +159,9 @@ export default function App() {
               setPlayerName(storedName);
               setShowNamePrompt(false);
             } else if (registerResponse.status === 409) {
-              const errorData = await registerResponse.json();
-              updateMessage(errorData.error || "Name already in use.");
+              updateMessage(
+                "That name is already in use, choose a different name."
+              );
               removeStored("wordly_name");
               setPlayerName("");
               setShowNamePrompt(true);
@@ -418,8 +419,14 @@ export default function App() {
         })
       });
       if (!response.ok) {
-        const errorData = await response.json();
-        updateMessage(errorData.error || "Unable to save name.");
+        if (response.status === 409) {
+          updateMessage(
+            "That name is already in use, choose a different name."
+          );
+        } else {
+          const errorData = await response.json();
+          updateMessage(errorData.error || "Unable to save name.");
+        }
         setPlayerName("");
         removeStored("wordly_name");
         setShowNamePrompt(true);
