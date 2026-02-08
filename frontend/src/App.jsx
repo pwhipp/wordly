@@ -477,7 +477,7 @@ export default function App() {
       <header className="header">
         <h1>
           {playerName
-            ? `FSQ Wordly ${playerName}'s attempt ${Math.min(
+            ? `FSQ ${playerName}'s attempt #${Math.min(
                 currentRow + 1,
                 maxGuesses
               )}`
