@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import io
 import json
 import sys
+import urllib.error
 from pathlib import Path
 
 import pytest
@@ -9,7 +11,18 @@ import pytest
 BASE_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BASE_DIR))
 
-from app import app, SCORES_FILE  # noqa: E402
+import app as app_module  # noqa: E402
+
+
+class DummyResponse:
+    def __init__(self, status: int = 200) -> None:
+        self.status = status
+
+    def __enter__(self) -> "DummyResponse":
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        return None
 
 
 @pytest.fixture()
@@ -17,12 +30,16 @@ def client(tmp_path, monkeypatch):
     scores_path = tmp_path / "scores.json"
     scores_path.write_text("[]", encoding="utf-8")
     monkeypatch.setattr("app.SCORES_FILE", scores_path)
-    app.config.update({"TESTING": True})
-    with app.test_client() as test_client:
+    app_module.app.config.update({"TESTING": True})
+    with app_module.app.test_client() as test_client:
         yield test_client
 
 
-def test_guess_evaluation(client):
+def test_guess_evaluation(client, monkeypatch):
+    monkeypatch.setattr(
+        "app.urllib.request.urlopen",
+        lambda *args, **kwargs: DummyResponse(),
+    )
     response = client.post("/api/guess", json={"guess": "crate"})
     assert response.status_code == 200
     payload = response.get_json()
@@ -38,5 +55,43 @@ def test_submit_score(client):
     assert response.status_code == 200
     payload = response.get_json()
     assert payload["entry"]["score"] == 10.0
-    scores = json.loads(SCORES_FILE.read_text(encoding="utf-8"))
+    scores = json.loads(app_module.SCORES_FILE.read_text(encoding="utf-8"))
     assert scores[0]["uid"] == "abc"
+
+
+def test_guess_rejected_when_not_a_word(client, monkeypatch):
+    def raise_not_found(*args, **kwargs):
+        raise urllib.error.HTTPError(
+            url="https://api.dictionaryapi.dev/api/v2/entries/en/xxxxx",
+            code=404,
+            msg="Not Found",
+            hdrs=None,
+            fp=io.BytesIO(b""),
+        )
+
+    monkeypatch.setattr("app.urllib.request.urlopen", raise_not_found)
+    response = client.post("/api/guess", json={"guess": "xxxxx"})
+    assert response.status_code == 400
+    payload = response.get_json()
+    assert payload["error"] == "That is not a word."
+
+
+def test_guess_accepted_when_api_unreachable(client, monkeypatch):
+    def raise_unreachable(*args, **kwargs):
+        raise urllib.error.URLError("offline")
+
+    monkeypatch.setattr("app.urllib.request.urlopen", raise_unreachable)
+    response = client.post("/api/guess", json={"guess": "crate"})
+    assert response.status_code == 200
+
+
+def test_dictionary_lookup_url_encoded(monkeypatch):
+    captured = {}
+
+    def capture_request(request, timeout=2):
+        captured["url"] = request.full_url
+        return DummyResponse()
+
+    monkeypatch.setattr("app.urllib.request.urlopen", capture_request)
+    assert app_module.is_valid_word("c++") is True
+    assert captured["url"].endswith("/c%2B%2B")

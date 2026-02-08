@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import json
 import time
+import urllib.error
+import urllib.parse
+import urllib.request
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Dict, List
@@ -102,6 +105,24 @@ def sanitize_float(value: Any, field: str) -> float:
     return float(value)
 
 
+def is_valid_word(guess: str) -> bool:
+    safe_guess = urllib.parse.quote(guess.lower())
+    url = f"https://api.dictionaryapi.dev/api/v2/entries/en/{safe_guess}"
+    request = urllib.request.Request(
+        url,
+        headers={"User-Agent": "wordly/1.0"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=2) as response:
+            return response.status == 200
+    except urllib.error.HTTPError as exc:
+        if exc.code == 404:
+            return False
+        return True
+    except (urllib.error.URLError, TimeoutError, ValueError):
+        return True
+
+
 @app.get("/api/config")
 def get_config() -> Any:
     word = load_word()
@@ -115,6 +136,8 @@ def post_guess() -> Any:
     word = load_word()
     if len(guess) != len(word):
         return jsonify({"error": "Invalid guess length."}), 400
+    if not is_valid_word(guess):
+        return jsonify({"error": "That is not a word."}), 400
     statuses = evaluate_guess(guess, word)
     return jsonify({"statuses": statuses, "guess": guess, "isCorrect": guess == word})
 
