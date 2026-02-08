@@ -49,6 +49,8 @@ export default function App() {
   const [showHelp, setShowHelp] = useState(false);
   const [showNamePrompt, setShowNamePrompt] = useState(false);
   const [playerName, setPlayerName] = useState("");
+  const [pendingName, setPendingName] = useState("");
+  const [nameError, setNameError] = useState("");
   const [scores, setScores] = useState([]);
   const [playerScore, setPlayerScore] = useState(null);
   const [startTime, setStartTime] = useState(Date.now());
@@ -127,6 +129,8 @@ export default function App() {
           setIsWinner(state.isWinner || false);
           setStartTime(state.startTime || Date.now());
           setPlayerName(state.name || "");
+          setPendingName(state.name || "");
+          setNameError("");
           if (state.name) {
             setStored("wordly_name", state.name);
             setShowNamePrompt(false);
@@ -157,15 +161,20 @@ export default function App() {
             });
             if (registerResponse.ok) {
               setPlayerName(storedName);
+              setPendingName(storedName);
+              setNameError("");
               setShowNamePrompt(false);
             } else if (registerResponse.status === 409) {
-              const errorData = await registerResponse.json();
-              updateMessage(errorData.error || "Name already in use.");
+              setNameError(
+                "That name is already in use, choose a different name."
+              );
               removeStored("wordly_name");
-              setPlayerName("");
+              setPendingName("");
               setShowNamePrompt(true);
             } else {
               updateMessage("Unable to save name.");
+              setPendingName("");
+              setNameError("");
               setShowNamePrompt(true);
             }
           } else {
@@ -393,10 +402,10 @@ export default function App() {
 
   const handleNameSubmit = async (event) => {
     event.preventDefault();
-    if (!playerName.trim()) {
+    if (!pendingName.trim()) {
       return;
     }
-    const cleaned = playerName.trim();
+    const cleaned = pendingName.trim();
     try {
       const response = await fetch(`${API_BASE}/state`, {
         method: "POST",
@@ -418,18 +427,27 @@ export default function App() {
         })
       });
       if (!response.ok) {
-        const errorData = await response.json();
-        updateMessage(errorData.error || "Unable to save name.");
-        setPlayerName("");
+        if (response.status === 409) {
+          setNameError(
+            "That name is already in use, choose a different name."
+          );
+        } else {
+          const errorData = await response.json();
+          updateMessage(errorData.error || "Unable to save name.");
+          setNameError("");
+        }
         removeStored("wordly_name");
         setShowNamePrompt(true);
         return;
       }
       setPlayerName(cleaned);
+      setPendingName(cleaned);
+      setNameError("");
       setStored("wordly_name", cleaned);
       setShowNamePrompt(false);
     } catch (error) {
       updateMessage("Unable to save name.");
+      setNameError("");
     }
   };
 
@@ -457,7 +475,14 @@ export default function App() {
   return (
     <div className="app">
       <header className="header">
-        <h1>Wordly</h1>
+        <h1>
+          {playerName
+            ? `FSQ ${playerName}'s attempt #${Math.min(
+                currentRow + 1,
+                maxGuesses
+              )}`
+            : "FSQ Wordly"}
+        </h1>
         <button type="button" className="help-button" onClick={() => setShowHelp(true)}>
           ?
         </button>
@@ -522,11 +547,17 @@ export default function App() {
             <form onSubmit={handleNameSubmit}>
               <input
                 type="text"
-                value={playerName}
-                onChange={(event) => setPlayerName(event.target.value)}
+                value={pendingName}
+                onChange={(event) => {
+                  setPendingName(event.target.value);
+                  if (nameError) {
+                    setNameError("");
+                  }
+                }}
                 placeholder="Your name"
                 maxLength={20}
               />
+              {nameError && <p className="name-error">{nameError}</p>}
               <button type="submit">Start</button>
             </form>
           </div>
