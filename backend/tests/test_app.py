@@ -29,7 +29,10 @@ class DummyResponse:
 def client(tmp_path, monkeypatch):
     scores_path = tmp_path / "scores.json"
     scores_path.write_text("[]", encoding="utf-8")
+    state_path = tmp_path / "game_state.json"
+    state_path.write_text("{}", encoding="utf-8")
     monkeypatch.setattr("app.SCORES_FILE", scores_path)
+    monkeypatch.setattr("app.GAME_STATE_FILE", state_path)
     app_module.app.config.update({"TESTING": True})
     with app_module.app.test_client() as test_client:
         yield test_client
@@ -95,3 +98,50 @@ def test_dictionary_lookup_url_encoded(monkeypatch):
     monkeypatch.setattr("app.urllib.request.urlopen", capture_request)
     assert app_module.is_valid_word("c++") is True
     assert captured["url"].endswith("/c%2B%2B")
+
+
+def test_state_persistence(client):
+    payload = {
+        "uid": "user-1",
+        "name": "Sam",
+        "state": {
+            "grid": [[{"letter": "C", "status": "correct"}]],
+            "currentRow": 1,
+            "currentCol": 0,
+            "keyboardStatuses": {"C": "correct"},
+            "gameOver": False,
+            "isWinner": False,
+            "startTime": 12345,
+            "maxGuesses": 6,
+            "wordLength": 5,
+        },
+    }
+    response = client.post("/api/state", json=payload)
+    assert response.status_code == 200
+    stored = app_module.GAME_STATE_FILE.read_text(encoding="utf-8")
+    assert stored.index('"name"') < stored.index('"grid"')
+
+    fetched = client.get("/api/state?uid=user-1")
+    assert fetched.status_code == 200
+    assert fetched.get_json()["state"]["name"] == "Sam"
+
+
+def test_state_name_conflict(client):
+    first = {
+        "uid": "user-1",
+        "name": "Alex",
+        "state": {"currentRow": 0},
+    }
+    second = {
+        "uid": "user-2",
+        "name": "Alex",
+        "state": {"currentRow": 1},
+    }
+    response = client.post("/api/state", json=first)
+    assert response.status_code == 200
+    conflict = client.post("/api/state", json=second)
+    assert conflict.status_code == 409
+    assert (
+        conflict.get_json()["error"]
+        == "The name Alex is already in use. Please choose another"
+    )

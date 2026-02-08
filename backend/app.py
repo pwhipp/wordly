@@ -15,6 +15,7 @@ from flask_cors import CORS
 BASE_DIR = Path(__file__).resolve().parent
 WORD_FILE = BASE_DIR / "words.txt"
 SCORES_FILE = BASE_DIR / "scores.json"
+GAME_STATE_FILE = BASE_DIR / "game_state.json"
 MAX_GUESSES = 6
 
 app = Flask(__name__)
@@ -105,6 +106,58 @@ def sanitize_float(value: Any, field: str) -> float:
     return float(value)
 
 
+def sanitize_state_payload(state: Any) -> Dict[str, Any]:
+    if not isinstance(state, dict):
+        raise ValueError("state must be an object")
+    sanitized: Dict[str, Any] = {}
+    if "grid" in state:
+        if not isinstance(state["grid"], list):
+            raise ValueError("grid must be a list")
+        sanitized["grid"] = state["grid"]
+    if "currentRow" in state:
+        sanitized["currentRow"] = sanitize_int(state["currentRow"], "currentRow")
+    if "currentCol" in state:
+        sanitized["currentCol"] = sanitize_int(state["currentCol"], "currentCol")
+    if "keyboardStatuses" in state:
+        if not isinstance(state["keyboardStatuses"], dict):
+            raise ValueError("keyboardStatuses must be an object")
+        sanitized["keyboardStatuses"] = state["keyboardStatuses"]
+    if "gameOver" in state:
+        if not isinstance(state["gameOver"], bool):
+            raise ValueError("gameOver must be a boolean")
+        sanitized["gameOver"] = state["gameOver"]
+    if "isWinner" in state:
+        if not isinstance(state["isWinner"], bool):
+            raise ValueError("isWinner must be a boolean")
+        sanitized["isWinner"] = state["isWinner"]
+    if "startTime" in state:
+        sanitized["startTime"] = sanitize_int(state["startTime"], "startTime")
+    if "maxGuesses" in state:
+        sanitized["maxGuesses"] = sanitize_int(state["maxGuesses"], "maxGuesses")
+    if "wordLength" in state:
+        sanitized["wordLength"] = sanitize_int(state["wordLength"], "wordLength")
+    return sanitized
+
+
+def load_game_state() -> Dict[str, Dict[str, Any]]:
+    if not GAME_STATE_FILE.exists():
+        return {}
+    data = json.loads(GAME_STATE_FILE.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        return {}
+    return data
+
+
+def save_game_state(state: Dict[str, Dict[str, Any]]) -> None:
+    GAME_STATE_FILE.write_text(json.dumps(state, indent=4), encoding="utf-8")
+
+
+def build_user_state(name: str, state: Dict[str, Any]) -> Dict[str, Any]:
+    user_state = {"name": name}
+    user_state.update({key: value for key, value in state.items() if key != "name"})
+    return user_state
+
+
 def is_valid_word(guess: str) -> bool:
     safe_guess = urllib.parse.quote(guess.lower())
     url = f"https://api.dictionaryapi.dev/api/v2/entries/en/{safe_guess}"
@@ -184,6 +237,43 @@ def post_submit() -> Any:
             "scores": [asdict(item) for item in scores],
         }
     )
+
+
+@app.get("/api/state")
+def get_state() -> Any:
+    uid = sanitize_text(request.args.get("uid"), "uid")
+    state = load_game_state()
+    user_state = state.get(uid)
+    return jsonify({"state": user_state})
+
+
+@app.post("/api/state")
+def post_state() -> Any:
+    payload = request.get_json(silent=True) or {}
+    uid = sanitize_text(payload.get("uid"), "uid")
+    name = sanitize_text(payload.get("name"), "name")
+    try:
+        sanitized_state = sanitize_state_payload(payload.get("state", {}))
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    state = load_game_state()
+    for existing_uid, existing_state in state.items():
+        if existing_uid != uid and existing_state.get("name") == name:
+            return (
+                jsonify(
+                    {
+                        "error": (
+                            f"The name {name} is already in use. Please choose another"
+                        )
+                    }
+                ),
+                409,
+            )
+
+    state[uid] = build_user_state(name, sanitized_state)
+    save_game_state(state)
+    return jsonify({"state": state[uid]})
 
 
 if __name__ == "__main__":
