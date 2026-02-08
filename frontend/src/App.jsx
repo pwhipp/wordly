@@ -42,6 +42,7 @@ export default function App() {
   const [currentCol, setCurrentCol] = useState(0);
   const [keyboardStatuses, setKeyboardStatuses] = useState({});
   const [message, setMessage] = useState("");
+  const [invalidGuessActive, setInvalidGuessActive] = useState(false);
   const [gameOver, setGameOver] = useState(false);
   const [isWinner, setIsWinner] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
@@ -53,6 +54,7 @@ export default function App() {
 
   const scoreContainerRef = useRef(null);
   const playerScoreRef = useRef(null);
+  const messageTimeoutRef = useRef(null);
 
   const uid = useMemo(() => {
     let stored = getStored("wordly_uid");
@@ -92,10 +94,17 @@ export default function App() {
     }
   }, [scores]);
 
-  const updateMessage = (text) => {
+  const updateMessage = (text, { autoClear = true } = {}) => {
+    if (messageTimeoutRef.current) {
+      clearTimeout(messageTimeoutRef.current);
+      messageTimeoutRef.current = null;
+    }
     setMessage(text);
-    if (text) {
-      setTimeout(() => setMessage(""), 2500);
+    if (text && autoClear) {
+      messageTimeoutRef.current = setTimeout(() => {
+        setMessage("");
+        messageTimeoutRef.current = null;
+      }, 2500);
     }
   };
 
@@ -119,7 +128,12 @@ export default function App() {
         });
         if (!response.ok) {
           const errorData = await response.json();
-          updateMessage(errorData.error || "Guess rejected.");
+          const errorText = errorData.error || "Guess rejected.";
+          const isInvalidWord = errorText === "That is not a word.";
+          updateMessage(errorText, { autoClear: !isInvalidWord });
+          if (isInvalidWord) {
+            setInvalidGuessActive(true);
+          }
           return;
         }
         const data = await response.json();
@@ -186,9 +200,22 @@ export default function App() {
       if (gameOver || showNamePrompt) {
         return;
       }
+      const shouldResetInvalid = invalidGuessActive;
       const key = value.toUpperCase();
+      let nextCol = currentCol;
+      if (shouldResetInvalid) {
+        updateMessage("");
+        setInvalidGuessActive(false);
+        setGrid((prev) => {
+          const next = prev.map((row) => row.map((cell) => ({ ...cell })));
+          next[currentRow] = next[currentRow].map(() => ({ letter: "", status: "" }));
+          return next;
+        });
+        setCurrentCol(0);
+        nextCol = 0;
+      }
       if (key === "ENTER") {
-        if (currentCol < wordLength) {
+        if (nextCol < wordLength) {
           updateMessage("Not enough letters");
           return;
         }
@@ -197,10 +224,10 @@ export default function App() {
         return;
       }
       if (key === "⌫" || key === "BACKSPACE") {
-        if (currentCol === 0) {
+        if (nextCol === 0) {
           return;
         }
-        const targetCol = currentCol - 1;
+        const targetCol = nextCol - 1;
         setGrid((prev) => {
           const next = prev.map((row) => row.map((cell) => ({ ...cell })));
           next[currentRow][targetCol].letter = "";
@@ -211,19 +238,28 @@ export default function App() {
         return;
       }
       if (/^[A-Z]$/.test(key)) {
-        if (currentCol >= wordLength) {
+        if (nextCol >= wordLength) {
           return;
         }
         setGrid((prev) => {
           const next = prev.map((row) => row.map((cell) => ({ ...cell })));
-          next[currentRow][currentCol].letter = key;
-          next[currentRow][currentCol].status = "";
+          next[currentRow][nextCol].letter = key;
+          next[currentRow][nextCol].status = "";
           return next;
         });
-        setCurrentCol((col) => col + 1);
+        setCurrentCol(nextCol + 1);
       }
     },
-    [currentCol, currentRow, gameOver, grid, showNamePrompt, submitGuess, wordLength]
+    [
+      currentCol,
+      currentRow,
+      gameOver,
+      grid,
+      invalidGuessActive,
+      showNamePrompt,
+      submitGuess,
+      wordLength
+    ]
   );
 
   useEffect(() => {
