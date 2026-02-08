@@ -21,6 +21,7 @@ const statusPriority = {
 
 const getStored = (key) => window.localStorage.getItem(key);
 const setStored = (key, value) => window.localStorage.setItem(key, value);
+const removeStored = (key) => window.localStorage.removeItem(key);
 
 const createEmptyGrid = (rows, cols) =>
   Array.from({ length: rows }, () =>
@@ -50,11 +51,13 @@ export default function App() {
   const [playerName, setPlayerName] = useState("");
   const [scores, setScores] = useState([]);
   const [playerScore, setPlayerScore] = useState(null);
-  const [startTime] = useState(Date.now());
+  const [startTime, setStartTime] = useState(Date.now());
+  const [configLoaded, setConfigLoaded] = useState(false);
 
   const scoreContainerRef = useRef(null);
   const playerScoreRef = useRef(null);
   const messageTimeoutRef = useRef(null);
+  const hasLoadedStateRef = useRef(false);
 
   const uid = useMemo(() => {
     let stored = getStored("wordly_uid");
@@ -72,27 +75,16 @@ export default function App() {
         setWordLength(data.wordLength);
         setMaxGuesses(data.maxGuesses);
         setGrid(createEmptyGrid(data.maxGuesses, data.wordLength));
+        setConfigLoaded(true);
       })
       .catch(() => setMessage("Unable to load game config."));
   }, []);
 
   useEffect(() => {
-    const storedName = getStored("wordly_name");
-    if (storedName) {
-      setPlayerName(storedName);
-    } else {
-      setShowNamePrompt(true);
-    }
     if (!getStored("wordly_help_seen")) {
       setShowHelp(true);
     }
   }, []);
-
-  useEffect(() => {
-    if (playerScoreRef.current && scoreContainerRef.current) {
-      playerScoreRef.current.scrollIntoView({ block: "center" });
-    }
-  }, [scores]);
 
   const updateMessage = (text, { autoClear = true } = {}) => {
     if (messageTimeoutRef.current) {
@@ -107,6 +99,93 @@ export default function App() {
       }, 2500);
     }
   };
+
+  useEffect(() => {
+    if (!configLoaded || hasLoadedStateRef.current) {
+      return;
+    }
+    const fetchState = async () => {
+      try {
+        const response = await fetch(
+          `${API_BASE}/state?uid=${encodeURIComponent(uid)}`
+        );
+        if (!response.ok) {
+          throw new Error("state");
+        }
+        const data = await response.json();
+        if (data.state) {
+          const state = data.state;
+          setWordLength(state.wordLength || wordLength);
+          setMaxGuesses(state.maxGuesses || maxGuesses);
+          setGrid(
+            state.grid || createEmptyGrid(maxGuesses, wordLength)
+          );
+          setCurrentRow(state.currentRow ?? 0);
+          setCurrentCol(state.currentCol ?? 0);
+          setKeyboardStatuses(state.keyboardStatuses || {});
+          setGameOver(state.gameOver || false);
+          setIsWinner(state.isWinner || false);
+          setStartTime(state.startTime || Date.now());
+          setPlayerName(state.name || "");
+          if (state.name) {
+            setStored("wordly_name", state.name);
+            setShowNamePrompt(false);
+          } else {
+            setShowNamePrompt(true);
+          }
+        } else {
+          const storedName = getStored("wordly_name");
+          if (storedName) {
+            const registerResponse = await fetch(`${API_BASE}/state`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                uid,
+                name: storedName,
+                state: {
+                  grid: createEmptyGrid(maxGuesses, wordLength),
+                  currentRow: 0,
+                  currentCol: 0,
+                  keyboardStatuses: {},
+                  gameOver: false,
+                  isWinner: false,
+                  startTime,
+                  maxGuesses,
+                  wordLength
+                }
+              })
+            });
+            if (registerResponse.ok) {
+              setPlayerName(storedName);
+              setShowNamePrompt(false);
+            } else if (registerResponse.status === 409) {
+              const errorData = await registerResponse.json();
+              updateMessage(errorData.error || "Name already in use.");
+              removeStored("wordly_name");
+              setPlayerName("");
+              setShowNamePrompt(true);
+            } else {
+              updateMessage("Unable to save name.");
+              setShowNamePrompt(true);
+            }
+          } else {
+            setShowNamePrompt(true);
+          }
+        }
+      } catch (error) {
+        updateMessage("Unable to load saved game.");
+      } finally {
+        hasLoadedStateRef.current = true;
+      }
+    };
+    fetchState();
+  }, [configLoaded, uid]);
+
+  useEffect(() => {
+    if (playerScoreRef.current && scoreContainerRef.current) {
+      playerScoreRef.current.scrollIntoView({ block: "center" });
+    }
+  }, [scores]);
 
   const applyKeyboardStatus = useCallback((letter, status) => {
     setKeyboardStatuses((prev) => {
@@ -168,6 +247,50 @@ export default function App() {
     },
     [applyKeyboardStatus, currentRow, maxGuesses]
   );
+
+  useEffect(() => {
+    if (!hasLoadedStateRef.current || !playerName) {
+      return;
+    }
+    const persistState = async () => {
+      try {
+        await fetch(`${API_BASE}/state`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            uid,
+            name: playerName,
+            state: {
+              grid,
+              currentRow,
+              currentCol,
+              keyboardStatuses,
+              gameOver,
+              isWinner,
+              startTime,
+              maxGuesses,
+              wordLength
+            }
+          })
+        });
+      } catch (error) {
+        updateMessage("Unable to save game.");
+      }
+    };
+    persistState();
+  }, [
+    currentCol,
+    currentRow,
+    gameOver,
+    grid,
+    isWinner,
+    keyboardStatuses,
+    maxGuesses,
+    playerName,
+    startTime,
+    uid,
+    wordLength
+  ]);
 
   const submitScore = async (tries) => {
     try {
@@ -268,15 +391,46 @@ export default function App() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [handleKeyPress]);
 
-  const handleNameSubmit = (event) => {
+  const handleNameSubmit = async (event) => {
     event.preventDefault();
     if (!playerName.trim()) {
       return;
     }
     const cleaned = playerName.trim();
-    setPlayerName(cleaned);
-    setStored("wordly_name", cleaned);
-    setShowNamePrompt(false);
+    try {
+      const response = await fetch(`${API_BASE}/state`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          uid,
+          name: cleaned,
+          state: {
+            grid,
+            currentRow,
+            currentCol,
+            keyboardStatuses,
+            gameOver,
+            isWinner,
+            startTime,
+            maxGuesses,
+            wordLength
+          }
+        })
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        updateMessage(errorData.error || "Unable to save name.");
+        setPlayerName("");
+        removeStored("wordly_name");
+        setShowNamePrompt(true);
+        return;
+      }
+      setPlayerName(cleaned);
+      setStored("wordly_name", cleaned);
+      setShowNamePrompt(false);
+    } catch (error) {
+      updateMessage("Unable to save name.");
+    }
   };
 
   const closeHelp = () => {
