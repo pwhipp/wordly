@@ -807,7 +807,6 @@ const GameApp = () => {
           ?
         </button>
       </header>
-      {message && <div className="toast">{message}</div>}
       <section className="grid">
         {grid.map((row, rowIndex) => (
           <div
@@ -842,6 +841,7 @@ const GameApp = () => {
           </div>
         ))}
       </section>
+      <div className="message-area">{message && <div className="toast">{message}</div>}</div>
 
       {showHelp && (
         <div className="modal">

@@ -58,6 +58,15 @@ body {
   border-radius: 6px;
 }
 
+.message-area {
+  min-height: 40px;
+  margin-top: 16px;
+}
+
+.message-area:empty {
+  margin-top: 0;
+}
+
 .grid {
   display: grid;
   gap: 6px;
