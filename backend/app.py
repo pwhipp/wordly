@@ -1,20 +1,21 @@
 from __future__ import annotations
 
 import json
+import random
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 
 BASE_DIR = Path(__file__).resolve().parent
-WORD_FILE = BASE_DIR / "words.txt"
-SCORES_FILE = BASE_DIR / "scores.json"
+ADMIN_CODE_FILE = BASE_DIR / "admin_code.txt"
+CANDIDATE_WORDS_FILE = BASE_DIR / "candidate_words.txt"
 GAME_STATE_FILE = BASE_DIR / "game_state.json"
 MAX_GUESSES = 6
 
@@ -39,26 +40,121 @@ def sanitize_word(raw_word: str) -> str:
     return word
 
 
+def parse_candidate_line(line: str) -> Tuple[str, str]:
+    parts = line.strip().split(" ", 1)
+    if not parts or not parts[0]:
+        raise ValueError("Invalid candidate word.")
+    word = sanitize_word(parts[0])
+    definition = parts[1].strip() if len(parts) > 1 else ""
+    return word, definition
+
+
+def choose_word_definition() -> Tuple[str, str]:
+    if not CANDIDATE_WORDS_FILE.exists():
+        return "CRATE", ""
+    lines = [
+        line
+        for line in CANDIDATE_WORDS_FILE.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    candidates = []
+    for line in lines:
+        try:
+            candidates.append(parse_candidate_line(line))
+        except ValueError:
+            continue
+    if not candidates:
+        return "CRATE", ""
+    return random.choice(candidates)
+
+
+def build_new_game_state() -> Dict[str, Any]:
+    word, definition = choose_word_definition()
+    return {
+        "word": word,
+        "definition": definition,
+        "scores": [],
+        "players": {},
+    }
+
+
+def normalize_game_state(data: Any) -> Dict[str, Any]:
+    if not isinstance(data, dict):
+        return build_new_game_state()
+
+    if not {"word", "definition", "scores", "players"} & data.keys():
+        players = data if isinstance(data, dict) else {}
+        word, definition = choose_word_definition()
+        return {
+            "word": word,
+            "definition": definition,
+            "scores": [],
+            "players": players if isinstance(players, dict) else {},
+        }
+
+    players = data.get("players", {})
+    scores = data.get("scores", [])
+    word = data.get("word")
+    definition = data.get("definition")
+
+    if not isinstance(players, dict):
+        players = {}
+    if not isinstance(scores, list):
+        scores = []
+
+    if isinstance(word, str) and word.strip():
+        try:
+            word = sanitize_word(word)
+        except ValueError:
+            word = None
+    else:
+        word = None
+
+    if word is None:
+        word, definition = choose_word_definition()
+    elif not isinstance(definition, str):
+        definition = ""
+
+    return {
+        "word": word,
+        "definition": definition,
+        "scores": scores,
+        "players": players,
+    }
+
+
+def load_full_game_state() -> Dict[str, Any]:
+    if not GAME_STATE_FILE.exists():
+        state = build_new_game_state()
+        save_game_state(state)
+        return state
+    try:
+        data = json.loads(GAME_STATE_FILE.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        data = {}
+    state = normalize_game_state(data)
+    if state != data:
+        save_game_state(state)
+    return state
+
+
 def load_word() -> str:
-    if not WORD_FILE.exists():
-        raise FileNotFoundError("words.txt is missing.")
-    raw = WORD_FILE.read_text(encoding="utf-8").strip()
-    return sanitize_word(raw)
+    state = load_full_game_state()
+    return state["word"]
 
 
 def load_scores() -> List[ScoreEntry]:
-    if not SCORES_FILE.exists():
-        return []
-    data = json.loads(SCORES_FILE.read_text(encoding="utf-8"))
+    state = load_full_game_state()
     scores = []
-    for entry in data:
+    for entry in state.get("scores", []):
         scores.append(ScoreEntry(**entry))
     return scores
 
 
 def save_scores(scores: List[ScoreEntry]) -> None:
-    data = [asdict(entry) for entry in scores]
-    SCORES_FILE.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    state = load_full_game_state()
+    state["scores"] = [asdict(entry) for entry in scores]
+    save_game_state(state)
 
 
 def sort_scores(scores: List[ScoreEntry]) -> List[ScoreEntry]:
@@ -139,17 +235,26 @@ def sanitize_state_payload(state: Any) -> Dict[str, Any]:
     return sanitized
 
 
-def load_game_state() -> Dict[str, Dict[str, Any]]:
-    if not GAME_STATE_FILE.exists():
-        return {}
-    data = json.loads(GAME_STATE_FILE.read_text(encoding="utf-8"))
-    if not isinstance(data, dict):
-        return {}
-    return data
+def load_players() -> Dict[str, Dict[str, Any]]:
+    state = load_full_game_state()
+    players = state.get("players", {})
+    return players if isinstance(players, dict) else {}
 
 
-def save_game_state(state: Dict[str, Dict[str, Any]]) -> None:
+def save_game_state(state: Dict[str, Any]) -> None:
     GAME_STATE_FILE.write_text(json.dumps(state, indent=4), encoding="utf-8")
+
+
+def save_players(players: Dict[str, Dict[str, Any]]) -> None:
+    state = load_full_game_state()
+    state["players"] = players
+    save_game_state(state)
+
+
+def load_admin_code() -> str:
+    if not ADMIN_CODE_FILE.exists():
+        raise FileNotFoundError("admin_code.txt is missing.")
+    return ADMIN_CODE_FILE.read_text(encoding="utf-8").strip()
 
 
 def build_user_state(name: str, state: Dict[str, Any]) -> Dict[str, Any]:
@@ -242,8 +347,8 @@ def post_submit() -> Any:
 @app.get("/api/state")
 def get_state() -> Any:
     uid = sanitize_text(request.args.get("uid"), "uid")
-    state = load_game_state()
-    user_state = state.get(uid)
+    players = load_players()
+    user_state = players.get(uid)
     return jsonify({"state": user_state})
 
 
@@ -257,8 +362,8 @@ def post_state() -> Any:
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
 
-    state = load_game_state()
-    for existing_uid, existing_state in state.items():
+    players = load_players()
+    for existing_uid, existing_state in players.items():
         if existing_uid != uid and existing_state.get("name") == name:
             return (
                 jsonify(
@@ -271,9 +376,36 @@ def post_state() -> Any:
                 409,
             )
 
-    state[uid] = build_user_state(name, sanitized_state)
+    players[uid] = build_user_state(name, sanitized_state)
+    save_players(players)
+    return jsonify({"state": players[uid]})
+
+
+@app.post("/api/admin/verify")
+def post_admin_verify() -> Any:
+    payload = request.get_json(silent=True) or {}
+    code = sanitize_text(payload.get("code"), "code")
+    try:
+        admin_code = load_admin_code()
+    except FileNotFoundError:
+        return jsonify({"error": "Admin code unavailable."}), 500
+    return jsonify({"valid": code == admin_code})
+
+
+@app.post("/api/admin/reset")
+def post_admin_reset() -> Any:
+    payload = request.get_json(silent=True) or {}
+    code = sanitize_text(payload.get("code"), "code")
+    try:
+        admin_code = load_admin_code()
+    except FileNotFoundError:
+        return jsonify({"error": "Admin code unavailable."}), 500
+    if code != admin_code:
+        return jsonify({"error": "Invalid admin code."}), 403
+
+    state = build_new_game_state()
     save_game_state(state)
-    return jsonify({"state": state[uid]})
+    return jsonify({"word": state["word"], "definition": state["definition"]})
 
 
 if __name__ == "__main__":

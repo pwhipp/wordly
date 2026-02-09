@@ -35,7 +35,148 @@ const generateUid = () => {
   return `uid-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 };
 
-export default function App() {
+const AdminPanel = () => {
+  const [adminCode, setAdminCode] = useState("");
+  const [codeValid, setCodeValid] = useState(false);
+  const [showCode, setShowCode] = useState(false);
+  const [statusMessage, setStatusMessage] = useState("");
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
+  const [isVerifying, setIsVerifying] = useState(false);
+
+  useEffect(() => {
+    if (!adminCode) {
+      setCodeValid(false);
+      setStatusMessage("");
+      return;
+    }
+    setIsVerifying(true);
+    const handle = setTimeout(async () => {
+      try {
+        const response = await fetch(`${API_BASE}/admin/verify`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code: adminCode })
+        });
+        if (!response.ok) {
+          throw new Error("verify");
+        }
+        const data = await response.json();
+        setCodeValid(Boolean(data.valid));
+        setStatusMessage(data.valid ? "" : "Admin code is incorrect.");
+      } catch (error) {
+        setCodeValid(false);
+        setStatusMessage("Unable to verify admin code.");
+      } finally {
+        setIsVerifying(false);
+      }
+    }, 300);
+    return () => clearTimeout(handle);
+  }, [adminCode]);
+
+  const performReset = async () => {
+    setIsResetting(true);
+    setStatusMessage("");
+    try {
+      const response = await fetch(`${API_BASE}/admin/reset`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: adminCode })
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Reset failed.");
+      }
+      setStatusMessage("Game state reset successfully.");
+    } catch (error) {
+      setStatusMessage(error.message || "Unable to reset game.");
+    } finally {
+      setIsResetting(false);
+      setShowConfirm(false);
+    }
+  };
+
+  const handleResetClick = async () => {
+    if (!codeValid || isResetting) {
+      return;
+    }
+    setStatusMessage("");
+    try {
+      const response = await fetch(`${API_BASE}/scores`);
+      if (!response.ok) {
+        throw new Error("scores");
+      }
+      const data = await response.json();
+      if (data.length === 0) {
+        setShowConfirm(true);
+        return;
+      }
+      await performReset();
+    } catch (error) {
+      setStatusMessage("Unable to check scores before reset.");
+    }
+  };
+
+  return (
+    <div className="app admin-app">
+      <header className="header">
+        <h1>Admin Control</h1>
+      </header>
+      <section className="admin-panel">
+        <label htmlFor="admin-code" className="admin-label">
+          admin code:
+        </label>
+        <div className="admin-code-field">
+          <input
+            id="admin-code"
+            type={showCode ? "text" : "password"}
+            value={adminCode}
+            onChange={(event) => setAdminCode(event.target.value)}
+            placeholder="Enter admin code"
+          />
+          <button
+            type="button"
+            className="toggle-visibility"
+            onClick={() => setShowCode((prev) => !prev)}
+            aria-label={showCode ? "Hide admin code" : "Show admin code"}
+          >
+            {showCode ? "🙈" : "👁"}
+          </button>
+        </div>
+        {statusMessage && <p className="admin-status">{statusMessage}</p>}
+        <button
+          type="button"
+          className="admin-reset"
+          onClick={handleResetClick}
+          disabled={!codeValid || isResetting || isVerifying}
+        >
+          Reset (clears the game state, scores and sets a new word)
+        </button>
+      </section>
+
+      {showConfirm && (
+        <div className="modal">
+          <div className="modal-content">
+            <h2>Confirm reset</h2>
+            <p>
+              Nobody has completed this puzzle yet. Are you sure you want to reset it?
+            </p>
+            <div className="confirm-actions">
+              <button type="button" onClick={performReset}>
+                Yes
+              </button>
+              <button type="button" onClick={() => setShowConfirm(false)}>
+                No
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const GameApp = () => {
   const [wordLength, setWordLength] = useState(5);
   const [maxGuesses, setMaxGuesses] = useState(6);
   const [grid, setGrid] = useState(() => createEmptyGrid(6, 5));
@@ -136,6 +277,21 @@ export default function App() {
             setShowNamePrompt(false);
           } else {
             setShowNamePrompt(true);
+          }
+          if (state.isWinner) {
+            try {
+              const scoresResponse = await fetch(`${API_BASE}/scores`);
+              if (scoresResponse.ok) {
+                const scoreData = await scoresResponse.json();
+                setScores(scoreData);
+                const matchingScore = scoreData.find(
+                  (entry) => entry.uid === uid
+                );
+                setPlayerScore(matchingScore || null);
+              }
+            } catch (scoresError) {
+              updateMessage("Unable to load scores.");
+            }
           }
         } else {
           const storedName = getStored("wordly_name");
@@ -583,4 +739,12 @@ export default function App() {
       )}
     </div>
   );
+};
+
+export default function App() {
+  const isAdminRoute = window.location.pathname === "/admin";
+  if (isAdminRoute) {
+    return <AdminPanel />;
+  }
+  return <GameApp />;
 }

@@ -27,11 +27,24 @@ class DummyResponse:
 
 @pytest.fixture()
 def client(tmp_path, monkeypatch):
-    scores_path = tmp_path / "scores.json"
-    scores_path.write_text("[]", encoding="utf-8")
+    candidate_path = tmp_path / "candidate_words.txt"
+    candidate_path.write_text("crate A container.\n", encoding="utf-8")
+    admin_code_path = tmp_path / "admin_code.txt"
+    admin_code_path.write_text("FSQ2023", encoding="utf-8")
     state_path = tmp_path / "game_state.json"
-    state_path.write_text("{}", encoding="utf-8")
-    monkeypatch.setattr("app.SCORES_FILE", scores_path)
+    state_path.write_text(
+        json.dumps(
+            {
+                "word": "CRATE",
+                "definition": "A container.",
+                "scores": [],
+                "players": {},
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("app.ADMIN_CODE_FILE", admin_code_path)
+    monkeypatch.setattr("app.CANDIDATE_WORDS_FILE", candidate_path)
     monkeypatch.setattr("app.GAME_STATE_FILE", state_path)
     app_module.app.config.update({"TESTING": True})
     with app_module.app.test_client() as test_client:
@@ -58,8 +71,8 @@ def test_submit_score(client):
     assert response.status_code == 200
     payload = response.get_json()
     assert payload["entry"]["score"] == 10.0
-    scores = json.loads(app_module.SCORES_FILE.read_text(encoding="utf-8"))
-    assert scores[0]["uid"] == "abc"
+    state = json.loads(app_module.GAME_STATE_FILE.read_text(encoding="utf-8"))
+    assert state["scores"][0]["uid"] == "abc"
 
 
 def test_guess_rejected_when_not_a_word(client, monkeypatch):
@@ -145,3 +158,21 @@ def test_state_name_conflict(client):
         conflict.get_json()["error"]
         == "The name Alex is already in use. Please choose another"
     )
+
+
+def test_admin_verification(client):
+    response = client.post("/api/admin/verify", json={"code": "FSQ2023"})
+    assert response.status_code == 200
+    assert response.get_json()["valid"] is True
+
+
+def test_admin_reset_clears_state(client):
+    client.post(
+        "/api/submit",
+        json={"uid": "abc", "name": "Tester", "tries": 3, "duration": 30},
+    )
+    response = client.post("/api/admin/reset", json={"code": "FSQ2023"})
+    assert response.status_code == 200
+    state = json.loads(app_module.GAME_STATE_FILE.read_text(encoding="utf-8"))
+    assert state["scores"] == []
+    assert state["players"] == {}
