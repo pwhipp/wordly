@@ -1,0 +1,8 @@
+{
+    "driver": "postgresql+psycopg2",
+    "host": "localhost",
+    "port": 5432,
+    "database": "wordly",
+    "user": "wordly",
+    "password": "change-me"
+}
