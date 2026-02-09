@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional, Tuple
 
 from flask import Flask, jsonify, request
 from flask_cors import CORS
@@ -40,6 +41,30 @@ def require_game_uid(payload: dict) -> str:
     return game_logic.sanitize_text(raw_game_uid, "gameUid")
 
 
+def optional_text(payload: dict, field: str) -> Optional[str]:
+    raw_value = payload.get(field)
+    if raw_value is None:
+        return None
+    return game_logic.sanitize_text(raw_value, field)
+
+
+def compute_score_from_state(state: dict) -> Tuple[int, float]:
+    current_row = state.get("currentRow", 0)
+    if not isinstance(current_row, int) or current_row < 0:
+        current_row = 0
+    tries = current_row + 1
+    start_time = state.get("startTime")
+    now = time.time()
+    if isinstance(start_time, int):
+        if start_time > 10_000_000_000:
+            duration = max(1.0, (now * 1000 - start_time) / 1000)
+        else:
+            duration = max(1.0, now - start_time)
+    else:
+        duration = 1.0
+    return tries, duration
+
+
 @app.get("/api/config")
 def get_config() -> Any:
     with db.get_session() as session:
@@ -59,6 +84,8 @@ def post_guess() -> Any:
     try:
         guess = game_logic.sanitize_text(payload.get("guess"), "guess").upper()
         game_uid = require_game_uid(payload)
+        uid = optional_text(payload, "uid")
+        name = optional_text(payload, "name")
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
     with db.get_session() as session:
@@ -72,7 +99,33 @@ def post_guess() -> Any:
     if not game_logic.is_valid_word(guess):
         return jsonify({"error": "That is not a word."}), 400
     statuses = game_logic.evaluate_guess(guess, word)
-    return jsonify({"statuses": statuses, "guess": guess, "isCorrect": guess == word})
+    is_correct = guess == word
+    if is_correct and uid:
+        with db.get_session() as session:
+            game = game_store.require_active_game(session, game_uid)
+            if not game_store.score_exists(session, game, uid):
+                player_record = game_store.get_player_state_record(
+                    session, game, uid
+                )
+                if player_record:
+                    tries, duration = compute_score_from_state(
+                        player_record.state_data or {}
+                    )
+                    player_name = player_record.name
+                elif name:
+                    tries, duration = 1, 1.0
+                    player_name = name
+                else:
+                    player_name = None
+                if player_name:
+                    game_store.save_score(
+                        session, game, uid, player_name, tries, duration
+                    )
+    response = {"statuses": statuses, "guess": guess, "isCorrect": is_correct}
+    if is_correct:
+        response["word"] = game.word
+        response["definition"] = game.definition
+    return jsonify(response)
 
 
 @app.get("/api/scores")

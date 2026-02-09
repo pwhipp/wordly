@@ -101,6 +101,17 @@ def get_player_state(session: Session, game: Game, uid: str) -> Optional[dict]:
     return build_user_state(record.name, record.state_data)
 
 
+def get_player_state_record(
+    session: Session, game: Game, uid: str
+) -> Optional[PlayerState]:
+    return session.scalar(
+        select(PlayerState).where(
+            PlayerState.game_id == game.id,
+            PlayerState.uid == uid,
+        )
+    )
+
+
 def upsert_player_state(
     session: Session, game: Game, uid: str, name: str, state_data: dict
 ) -> dict:
