@@ -769,7 +769,7 @@ const GameApp = () => {
     }
   };
 
-  const helpButtonRef = useRef(null);
+  const helpModalRef = useRef(null);
 
   const closeHelp = () => {
     setStored("wordly_help_seen", "1");
@@ -778,7 +778,7 @@ const GameApp = () => {
 
   useEffect(() => {
     if (showHelp) {
-      helpButtonRef.current?.focus();
+      helpModalRef.current?.focus();
     }
   }, [showHelp]);
 
@@ -859,6 +859,14 @@ const GameApp = () => {
               closeHelp();
             }
           }}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              closeHelp();
+            }
+          }}
+          ref={helpModalRef}
+          tabIndex={-1}
         >
           <div className="modal-content">
             <h2>How to play</h2>
@@ -867,7 +875,7 @@ const GameApp = () => {
               <li>Each guess must be a valid 5-letter word.</li>
               <li>The color of the tiles will change to show how close your guess was.</li>
             </ul>
-            <button type="button" onClick={closeHelp} ref={helpButtonRef}>
+            <button type="button" onClick={closeHelp}>
               Got it
             </button>
           </div>
