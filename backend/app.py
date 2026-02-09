@@ -7,6 +7,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import uuid
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
@@ -73,6 +74,7 @@ def choose_word_definition() -> Tuple[str, str]:
 def build_new_game_state() -> Dict[str, Any]:
     word, definition = choose_word_definition()
     return {
+        "gameUid": uuid.uuid4().hex,
         "word": word,
         "definition": definition,
         "scores": [],
@@ -88,6 +90,7 @@ def normalize_game_state(data: Any) -> Dict[str, Any]:
         players = data if isinstance(data, dict) else {}
         word, definition = choose_word_definition()
         return {
+            "gameUid": uuid.uuid4().hex,
             "word": word,
             "definition": definition,
             "scores": [],
@@ -98,6 +101,7 @@ def normalize_game_state(data: Any) -> Dict[str, Any]:
     scores = data.get("scores", [])
     word = data.get("word")
     definition = data.get("definition")
+    game_uid = data.get("gameUid")
 
     if not isinstance(players, dict):
         players = {}
@@ -116,8 +120,11 @@ def normalize_game_state(data: Any) -> Dict[str, Any]:
         word, definition = choose_word_definition()
     elif not isinstance(definition, str):
         definition = ""
+    if not isinstance(game_uid, str) or not game_uid.strip():
+        game_uid = uuid.uuid4().hex
 
     return {
+        "gameUid": game_uid,
         "word": word,
         "definition": definition,
         "scores": scores,
@@ -289,8 +296,14 @@ def is_valid_word(guess: str) -> bool:
 
 @app.get("/api/config")
 def get_config() -> Any:
-    word = load_word()
-    return jsonify({"wordLength": len(word), "maxGuesses": MAX_GUESSES})
+    state = load_full_game_state()
+    return jsonify(
+        {
+            "wordLength": len(state["word"]),
+            "maxGuesses": MAX_GUESSES,
+            "gameUid": state["gameUid"],
+        }
+    )
 
 
 @app.post("/api/guess")

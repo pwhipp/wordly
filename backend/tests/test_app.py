@@ -35,6 +35,7 @@ def client(tmp_path, monkeypatch):
     state_path.write_text(
         json.dumps(
             {
+                "gameUid": "game-1",
                 "word": "CRATE",
                 "definition": "A container.",
                 "scores": [],
@@ -199,6 +200,7 @@ def test_admin_verification(client):
 
 
 def test_admin_reset_clears_state(client):
+    original_state = json.loads(app_module.GAME_STATE_FILE.read_text(encoding="utf-8"))
     client.post(
         "/api/submit",
         json={"uid": "abc", "name": "Tester", "tries": 3, "duration": 30},
@@ -208,3 +210,12 @@ def test_admin_reset_clears_state(client):
     state = json.loads(app_module.GAME_STATE_FILE.read_text(encoding="utf-8"))
     assert state["scores"] == []
     assert state["players"] == {}
+    assert state["gameUid"] != original_state["gameUid"]
+
+
+def test_config_includes_game_uid(client):
+    response = client.get("/api/config")
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert isinstance(payload["gameUid"], str)
+    assert payload["gameUid"]
