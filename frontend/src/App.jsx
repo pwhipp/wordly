@@ -726,7 +726,6 @@ const GameApp = () => {
         <span>{entry.name}</span>
         <span>{entry.tries} tries</span>
         <span>{entry.duration}s</span>
-        <span>{entry.score}</span>
       </div>
     );
   });
@@ -831,8 +830,7 @@ const GameApp = () => {
               {scoreRows.length ? scoreRows : <p>No scores yet.</p>}
             </div>
             <p className="score-note">
-              Score equals total time taken (seconds) divided by the number of tries. Lower
-              scores are better.
+              Ranked by fewest tries, then fastest time.
             </p>
             <button
               type="button"

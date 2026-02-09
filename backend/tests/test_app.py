@@ -71,9 +71,31 @@ def test_submit_score(client):
     )
     assert response.status_code == 200
     payload = response.get_json()
-    assert payload["entry"]["score"] == 10.0
+    assert payload["entry"]["tries"] == 3
+    assert payload["entry"]["duration"] == 30
     state = json.loads(app_module.GAME_STATE_FILE.read_text(encoding="utf-8"))
     assert state["scores"][0]["uid"] == "abc"
+
+
+def test_scores_sorted_by_tries_then_duration(client):
+    client.post(
+        "/api/submit",
+        json={"uid": "one", "name": "One", "tries": 3, "duration": 50},
+    )
+    client.post(
+        "/api/submit",
+        json={"uid": "two", "name": "Two", "tries": 2, "duration": 70},
+    )
+    client.post(
+        "/api/submit",
+        json={"uid": "three", "name": "Three", "tries": 3, "duration": 40},
+    )
+
+    response = client.get("/api/scores")
+    assert response.status_code == 200
+    payload = response.get_json()
+
+    assert [entry["uid"] for entry in payload] == ["two", "three", "one"]
 
 
 def test_submit_score_requires_name(client):
