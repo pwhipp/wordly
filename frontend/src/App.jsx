@@ -769,26 +769,17 @@ const GameApp = () => {
     }
   };
 
+  const helpButtonRef = useRef(null);
+
   const closeHelp = () => {
     setStored("wordly_help_seen", "1");
     setShowHelp(false);
   };
 
   useEffect(() => {
-    if (!showHelp) {
-      return;
+    if (showHelp) {
+      helpButtonRef.current?.focus();
     }
-
-    const handleHelpKeyDown = (event) => {
-      if (event.key === "Enter") {
-        closeHelp();
-      }
-    };
-
-    window.addEventListener("keydown", handleHelpKeyDown);
-    return () => {
-      window.removeEventListener("keydown", handleHelpKeyDown);
-    };
   }, [showHelp]);
 
   const scoresToRender =
@@ -876,7 +867,7 @@ const GameApp = () => {
               <li>Each guess must be a valid 5-letter word.</li>
               <li>The color of the tiles will change to show how close your guess was.</li>
             </ul>
-            <button type="button" onClick={closeHelp}>
+            <button type="button" onClick={closeHelp} ref={helpButtonRef}>
               Got it
             </button>
           </div>
