@@ -356,7 +356,7 @@ def test_config_includes_git_metadata(client, monkeypatch):
     response = client.get("/api/config")
     assert response.status_code == 200
     payload = response.get_json()
-    assert payload["git"] == {"branch": "main", "commitId": "abc123"}
+    assert payload["git"] == {"branch": "main", "head": "abc123"}
 
 
 def test_guess_rejected_for_inactive_game(client, monkeypatch, game_uid):

@@ -68,12 +68,16 @@ def compute_score_from_state(state: dict) -> Tuple[int, float]:
 
 def run_git_command(args: list[str]) -> Optional[str]:
     repo_root = BASE_DIR.parent
-    result = subprocess.run(
-        ["git", "-C", str(repo_root), *args],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(repo_root), *args],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=1,
+        )
+    except (subprocess.SubprocessError, FileNotFoundError, TimeoutError):
+        return None
     if result.returncode != 0:
         return None
     value = result.stdout.strip()
@@ -85,7 +89,7 @@ def run_git_command(args: list[str]) -> Optional[str]:
 def get_git_metadata() -> dict[str, Optional[str]]:
     return {
         "branch": run_git_command(["rev-parse", "--abbrev-ref", "HEAD"]),
-        "commitId": run_git_command(["rev-parse", "HEAD"]),
+        "head": run_git_command(["rev-parse", "HEAD"]),
     }
 
 
