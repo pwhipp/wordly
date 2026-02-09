@@ -25,13 +25,10 @@ const getStored = (key) => window.localStorage.getItem(key);
 const setStored = (key, value) => window.localStorage.setItem(key, value);
 const removeStored = (key) => window.localStorage.removeItem(key);
 
-const gameUidStorageKey = (uid) => `wordly_game_uid_${uid}`;
+const gameUidStorageKey = () => "wordly_game_uid";
 
-const clearStoredGameState = (uid) => {
-  if (uid) {
-    removeStored(gameUidStorageKey(uid));
-  }
-  removeStored("wordly_name");
+const clearStoredGameState = () => {
+  removeStored(gameUidStorageKey());
   removeStored("wordly_help_seen");
 };
 
@@ -235,7 +232,7 @@ const GameApp = () => {
         setGrid(createEmptyGrid(data.maxGuesses, data.wordLength));
         setGameUid(nextGameUid);
         if (nextGameUid) {
-          setStored(gameUidStorageKey(uid), nextGameUid);
+          setStored(gameUidStorageKey(), nextGameUid);
         }
         setConfigLoaded(true);
       })
@@ -278,7 +275,7 @@ const GameApp = () => {
         if (data.state) {
           const state = data.state;
           if (gameUid) {
-            setStored(gameUidStorageKey(uid), gameUid);
+            setStored(gameUidStorageKey(), gameUid);
           }
           setWordLength(state.wordLength || wordLength);
           setMaxGuesses(state.maxGuesses || maxGuesses);
@@ -351,12 +348,12 @@ const GameApp = () => {
               setNameError(
                 "That name is already in use, choose a different name."
               );
-              removeStored("wordly_name");
-              setPendingName("");
+              setPlayerName("");
+              setPendingName(storedName);
               setShowNamePrompt(true);
             } else {
               updateMessage("Unable to save name.");
-              setPendingName("");
+              setPendingName(storedName);
               setNameError("");
               setShowNamePrompt(true);
             }
@@ -402,10 +399,10 @@ const GameApp = () => {
 
   const resetForNewGame = useCallback(
     ({ nextGameUid, nextWordLength, nextMaxGuesses }) => {
-      clearStoredGameState(uid);
+      clearStoredGameState();
       setGameUid(nextGameUid);
       if (nextGameUid) {
-        setStored(gameUidStorageKey(uid), nextGameUid);
+        setStored(gameUidStorageKey(), nextGameUid);
       }
       if (nextWordLength) {
         setWordLength(nextWordLength);
@@ -424,9 +421,10 @@ const GameApp = () => {
       setGameOver(false);
       setIsWinner(false);
       setShowHelp(false);
-      setShowNamePrompt(true);
+      const storedName = getStored("wordly_name") || "";
+      setShowNamePrompt(!storedName);
       setPlayerName("");
-      setPendingName("");
+      setPendingName(storedName);
       setNameError("");
       setScores([]);
       setPlayerScore(null);
@@ -445,7 +443,7 @@ const GameApp = () => {
           throw new Error("config");
         }
         const configData = await configResponse.json();
-        const storedGameUid = getStored(gameUidStorageKey(uid));
+        const storedGameUid = getStored(gameUidStorageKey());
         if (
           configData.gameUid
           && (configData.gameUid !== gameUid || configData.gameUid !== storedGameUid)
@@ -737,7 +735,6 @@ const GameApp = () => {
           updateMessage(errorData.error || "Unable to save name.");
           setNameError("");
         }
-        removeStored("wordly_name");
         setShowNamePrompt(true);
         return;
       }
