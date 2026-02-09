@@ -774,6 +774,23 @@ const GameApp = () => {
     setShowHelp(false);
   };
 
+  useEffect(() => {
+    if (!showHelp) {
+      return;
+    }
+
+    const handleHelpKeyDown = (event) => {
+      if (event.key === "Enter") {
+        closeHelp();
+      }
+    };
+
+    window.addEventListener("keydown", handleHelpKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleHelpKeyDown);
+    };
+  }, [showHelp]);
+
   const scoresToRender =
     scores.length === 0 && playerScore ? [playerScore] : scores;
 
@@ -844,7 +861,14 @@ const GameApp = () => {
       <div className="message-area">{message && <div className="toast">{message}</div>}</div>
 
       {showHelp && (
-        <div className="modal">
+        <div
+          className="modal"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) {
+              closeHelp();
+            }
+          }}
+        >
           <div className="modal-content">
             <h2>How to play</h2>
             <p>Guess the Wordly in 6 tries.</p>
