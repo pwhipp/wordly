@@ -21,6 +21,33 @@ python app.py
 
 The backend runs on `http://localhost:5000`.
 
+### Database (Postgres)
+
+The backend expects a Postgres database. Copy the example config and update it with your
+credentials:
+
+```bash
+cd backend
+cp db_config.example.json db_config.json
+```
+
+Create the database and user (Ubuntu/Postgres defaults shown below):
+
+```bash
+sudo -u postgres psql <<'SQL'
+CREATE USER wordly WITH PASSWORD 'change-me';
+CREATE DATABASE wordly OWNER wordly;
+GRANT ALL PRIVILEGES ON DATABASE wordly TO wordly;
+SQL
+```
+
+To rebuild the database (drop and recreate all tables), run:
+
+```bash
+cd backend
+python db.py rebuild
+```
+
 ### Frontend
 
 ```bash
@@ -33,8 +60,8 @@ The frontend runs on `http://localhost:5173`.
 
 ## Gameplay configuration
 
-- The current game state (word, definition, scores, and players) lives in `backend/game_state.json`.
-- Use the `/admin` page in the frontend to reset the game state and select a new word.
+- Game data (word, definition, scores, and player states) is stored in Postgres.
+- Use the `/admin` page in the frontend to reset the game and select a new word.
 
 ## Tests
 
