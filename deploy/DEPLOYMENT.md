@@ -7,7 +7,15 @@ These instructions assume the code is installed at `/home/wordly/wordly` and a
 
 ```bash
 sudo apt update
-sudo apt install -y python3-venv python3-pip nodejs npm nginx certbot python3-certbot-nginx
+sudo apt install -y python3-venv python3-pip nginx certbot python3-certbot-nginx
+```
+
+Install Node.js 18+ (required by Vite) using NodeSource:
+
+```bash
+curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+sudo apt install -y nodejs
+node --version
 ```
 
 ## 2) App install (as the wordly user)
