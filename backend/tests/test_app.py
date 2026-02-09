@@ -80,6 +80,8 @@ def test_submit_score(client, game_uid):
     payload = response.get_json()
     assert payload["entry"]["tries"] == 3
     assert payload["entry"]["duration"] == 30
+    assert payload["word"] == "CRATE"
+    assert payload["definition"] == "A container."
     with db_module.get_session() as session:
         score = session.scalar(
             select(Score).where(Score.uid == "abc")

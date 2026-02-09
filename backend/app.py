@@ -114,6 +114,8 @@ def post_submit() -> Any:
         {
             "entry": game_store.score_entry_to_dict(entry),
             "scores": [game_store.score_entry_to_dict(item) for item in scores],
+            "word": game.word,
+            "definition": game.definition,
         }
     )
 
