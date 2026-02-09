@@ -75,6 +75,16 @@ def test_submit_score(client):
     assert state["scores"][0]["uid"] == "abc"
 
 
+def test_submit_score_requires_name(client):
+    response = client.post(
+        "/api/submit",
+        json={"uid": "abc", "tries": 3, "duration": 30},
+    )
+    assert response.status_code == 400
+    payload = response.get_json()
+    assert payload["error"] == "name must be a string"
+
+
 def test_guess_rejected_when_not_a_word(client, monkeypatch):
     def raise_not_found(*args, **kwargs):
         raise urllib.error.HTTPError(

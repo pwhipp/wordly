@@ -309,10 +309,13 @@ def get_scores() -> Any:
 @app.post("/api/submit")
 def post_submit() -> Any:
     payload = request.get_json(silent=True) or {}
-    uid = sanitize_text(payload.get("uid"), "uid")
-    name = sanitize_text(payload.get("name"), "name")
-    tries = sanitize_int(payload.get("tries"), "tries")
-    duration = sanitize_float(payload.get("duration"), "duration")
+    try:
+        uid = sanitize_text(payload.get("uid"), "uid")
+        name = sanitize_text(payload.get("name"), "name")
+        tries = sanitize_int(payload.get("tries"), "tries")
+        duration = sanitize_float(payload.get("duration"), "duration")
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
 
     if tries <= 0:
         return jsonify({"error": "tries must be positive."}), 400
