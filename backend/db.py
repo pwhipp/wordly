@@ -31,11 +31,14 @@ def build_db_url() -> str:
     db_url = os.environ.get("WORDLY_DB_URL")
     if db_url:
         return db_url
-    config = load_db_config()
-    return (
-        f"{config['driver']}://{config['user']}:{config['password']}@"
-        f"{config['host']}:{config['port']}/{config['database']}"
-    )
+    if DB_CONFIG_FILE.exists():
+        config = load_db_config()
+        return (
+            f"{config['driver']}://{config['user']}:{config['password']}@"
+            f"{config['host']}:{config['port']}/{config['database']}"
+        )
+    sqlite_path = BASE_DIR / "wordly.sqlite"
+    return f"sqlite:///{sqlite_path}"
 
 
 def configure_database(db_url: Optional[str] = None) -> None:

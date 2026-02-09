@@ -283,6 +283,21 @@ const GameApp = () => {
     [setGameUid]
   );
 
+  const loadScores = useCallback(async () => {
+    try {
+      const scoresResponse = await fetch(`${API_BASE}/scores`);
+      if (!scoresResponse.ok) {
+        throw new Error("scores");
+      }
+      const scoreData = await scoresResponse.json();
+      setScores(scoreData);
+      const matchingScore = scoreData.find((entry) => entry.uid === uid);
+      setPlayerScore(matchingScore || null);
+    } catch (scoresError) {
+      updateMessage("Unable to load scores.");
+    }
+  }, [uid, updateMessage]);
+
   useEffect(() => {
     if (!configLoaded || hasLoadedStateRef.current) {
       return;
@@ -457,21 +472,6 @@ const GameApp = () => {
     },
     [maxGuesses, uid, wordLength]
   );
-
-  const loadScores = useCallback(async () => {
-    try {
-      const scoresResponse = await fetch(`${API_BASE}/scores`);
-      if (!scoresResponse.ok) {
-        throw new Error("scores");
-      }
-      const scoreData = await scoresResponse.json();
-      setScores(scoreData);
-      const matchingScore = scoreData.find((entry) => entry.uid === uid);
-      setPlayerScore(matchingScore || null);
-    } catch (scoresError) {
-      updateMessage("Unable to load scores.");
-    }
-  }, [uid, updateMessage]);
 
   const submitGuess = useCallback(
     async (guess) => {
