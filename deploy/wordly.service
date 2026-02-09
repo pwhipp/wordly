@@ -1,0 +1,21 @@
+[Unit]
+Description=Wordly Flask API (Gunicorn)
+After=network.target
+
+[Service]
+User=wordly
+Group=www-data
+WorkingDirectory=/home/wordly/wordly/backend
+Environment=PYTHONUNBUFFERED=1
+Environment=PATH=/home/wordly/wordly/backend/.venv/bin
+ExecStart=/home/wordly/wordly/backend/.venv/bin/gunicorn \
+    --workers 2 \
+    --bind unix:/home/wordly/wordly.sock \
+    --access-logfile /home/wordly/gunicorn_access.log \
+    --error-logfile /home/wordly/gunicorn_error.log \
+    app:app
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
