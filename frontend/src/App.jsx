@@ -23,6 +23,12 @@ const getStored = (key) => window.localStorage.getItem(key);
 const setStored = (key, value) => window.localStorage.setItem(key, value);
 const removeStored = (key) => window.localStorage.removeItem(key);
 
+const clearStoredGameState = () => {
+  removeStored("wordly_game_uid");
+  removeStored("wordly_name");
+  removeStored("wordly_help_seen");
+};
+
 const createEmptyGrid = (rows, cols) =>
   Array.from({ length: rows }, () =>
     Array.from({ length: cols }, () => ({ letter: "", status: "" }))
@@ -196,6 +202,7 @@ const GameApp = () => {
   const [playerScore, setPlayerScore] = useState(null);
   const [startTime, setStartTime] = useState(Date.now());
   const [configLoaded, setConfigLoaded] = useState(false);
+  const [gameUid, setGameUid] = useState(null);
   const [showScoresOverlay, setShowScoresOverlay] = useState(false);
 
   const scoreContainerRef = useRef(null);
@@ -216,9 +223,14 @@ const GameApp = () => {
     fetch(`${API_BASE}/config`)
       .then((res) => res.json())
       .then((data) => {
+        const nextGameUid = data.gameUid || null;
         setWordLength(data.wordLength);
         setMaxGuesses(data.maxGuesses);
         setGrid(createEmptyGrid(data.maxGuesses, data.wordLength));
+        setGameUid(nextGameUid);
+        if (nextGameUid) {
+          setStored("wordly_game_uid", nextGameUid);
+        }
         setConfigLoaded(true);
       })
       .catch(() => setMessage("Unable to load game config."));
@@ -259,6 +271,9 @@ const GameApp = () => {
         const data = await response.json();
         if (data.state) {
           const state = data.state;
+          if (gameUid) {
+            setStored("wordly_game_uid", gameUid);
+          }
           setWordLength(state.wordLength || wordLength);
           setMaxGuesses(state.maxGuesses || maxGuesses);
           setGrid(
@@ -350,7 +365,7 @@ const GameApp = () => {
       }
     };
     fetchState();
-  }, [configLoaded, uid]);
+  }, [configLoaded, gameUid, uid]);
 
   useEffect(() => {
     if (playerScoreRef.current && scoreContainerRef.current) {
@@ -379,9 +394,60 @@ const GameApp = () => {
     });
   }, []);
 
+  const resetForNewGame = useCallback(
+    ({ nextGameUid, nextWordLength, nextMaxGuesses }) => {
+      clearStoredGameState();
+      setGameUid(nextGameUid);
+      if (nextGameUid) {
+        setStored("wordly_game_uid", nextGameUid);
+      }
+      if (nextWordLength) {
+        setWordLength(nextWordLength);
+      }
+      if (nextMaxGuesses) {
+        setMaxGuesses(nextMaxGuesses);
+      }
+      const gridRows = nextMaxGuesses || maxGuesses;
+      const gridCols = nextWordLength || wordLength;
+      setGrid(createEmptyGrid(gridRows, gridCols));
+      setCurrentRow(0);
+      setCurrentCol(0);
+      setKeyboardStatuses({});
+      setMessage("");
+      setInvalidGuessActive(false);
+      setGameOver(false);
+      setIsWinner(false);
+      setShowHelp(false);
+      setShowNamePrompt(true);
+      setPlayerName("");
+      setPendingName("");
+      setNameError("");
+      setScores([]);
+      setPlayerScore(null);
+      setStartTime(Date.now());
+      setShowScoresOverlay(false);
+      hasLoadedStateRef.current = false;
+    },
+    [maxGuesses, wordLength]
+  );
+
   const submitGuess = useCallback(
     async (guess) => {
       try {
+        const configResponse = await fetch(`${API_BASE}/config`);
+        if (!configResponse.ok) {
+          throw new Error("config");
+        }
+        const configData = await configResponse.json();
+        if (configData.gameUid && configData.gameUid !== gameUid) {
+          resetForNewGame({
+            nextGameUid: configData.gameUid,
+            nextWordLength: configData.wordLength,
+            nextMaxGuesses: configData.maxGuesses
+          });
+          updateMessage("Game was reset. Loading new game.");
+          return;
+        }
         const response = await fetch(`${API_BASE}/guess`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -430,7 +496,7 @@ const GameApp = () => {
         updateMessage("Could not submit guess.");
       }
     },
-    [applyKeyboardStatus, currentRow, maxGuesses]
+    [applyKeyboardStatus, currentRow, gameUid, maxGuesses, resetForNewGame]
   );
 
   useEffect(() => {
