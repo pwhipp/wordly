@@ -769,10 +769,18 @@ const GameApp = () => {
     }
   };
 
+  const helpModalRef = useRef(null);
+
   const closeHelp = () => {
     setStored("wordly_help_seen", "1");
     setShowHelp(false);
   };
+
+  useEffect(() => {
+    if (showHelp) {
+      helpModalRef.current?.focus();
+    }
+  }, [showHelp]);
 
   const scoresToRender =
     scores.length === 0 && playerScore ? [playerScore] : scores;
@@ -844,7 +852,22 @@ const GameApp = () => {
       <div className="message-area">{message && <div className="toast">{message}</div>}</div>
 
       {showHelp && (
-        <div className="modal">
+        <div
+          className="modal"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) {
+              closeHelp();
+            }
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              closeHelp();
+            }
+          }}
+          ref={helpModalRef}
+          tabIndex={-1}
+        >
           <div className="modal-content">
             <h2>How to play</h2>
             <p>Guess the Wordly in 6 tries.</p>
