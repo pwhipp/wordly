@@ -570,8 +570,14 @@ const GameApp = () => {
         return;
       }
       const data = await response.json();
-      setScores(data.scores || []);
-      setPlayerScore(data.entry);
+      const nextScores =
+        Array.isArray(data.scores) && data.scores.length
+          ? data.scores
+          : data.entry
+            ? [data.entry]
+            : [];
+      setScores(nextScores);
+      setPlayerScore(data.entry || null);
     } catch (error) {
       updateMessage("Unable to submit score.");
     }
@@ -706,7 +712,10 @@ const GameApp = () => {
     setShowHelp(false);
   };
 
-  const scoreRows = scores.map((entry) => {
+  const scoresToRender =
+    scores.length === 0 && playerScore ? [playerScore] : scores;
+
+  const scoreRows = scoresToRender.map((entry) => {
     const isPlayer = playerScore?.uid === entry.uid;
     return (
       <div
