@@ -261,6 +261,28 @@ const GameApp = () => {
     }
   };
 
+  const resolveActiveGameUid = useCallback(
+    async (currentGameUid) => {
+      const storedGameUid = getStored(gameUidStorageKey());
+      const fallbackGameUid = currentGameUid || storedGameUid;
+      try {
+        const response = await fetch(`${API_BASE}/config`);
+        if (!response.ok) {
+          throw new Error("config");
+        }
+        const configData = await response.json();
+        if (configData.gameUid && configData.gameUid !== fallbackGameUid) {
+          setGameUid(configData.gameUid);
+          setStored(gameUidStorageKey(), configData.gameUid);
+        }
+        return configData.gameUid || fallbackGameUid;
+      } catch (error) {
+        return fallbackGameUid || null;
+      }
+    },
+    [setGameUid]
+  );
+
   useEffect(() => {
     if (!configLoaded || hasLoadedStateRef.current) {
       return;
@@ -322,12 +344,21 @@ const GameApp = () => {
         } else {
           const storedName = getStored("wordly_name");
           if (storedName) {
+            const activeGameUid = await resolveActiveGameUid(gameUid);
+            if (!activeGameUid) {
+              updateMessage("Unable to connect to the game server.");
+              setPendingName(storedName);
+              setNameError("");
+              setShowNamePrompt(true);
+              return;
+            }
             const registerResponse = await fetch(`${API_BASE}/state`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 uid,
                 name: storedName,
+                gameUid: activeGameUid,
                 state: {
                   grid: createEmptyGrid(maxGuesses, wordLength),
                   currentRow: 0,
@@ -370,7 +401,7 @@ const GameApp = () => {
       }
     };
     fetchState();
-  }, [configLoaded, gameUid, uid]);
+  }, [configLoaded, gameUid, resolveActiveGameUid, uid]);
 
   useEffect(() => {
     if (playerScoreRef.current && scoreContainerRef.current) {
@@ -700,6 +731,14 @@ const GameApp = () => {
       return;
     }
     const cleaned = pendingName.trim();
+    setStored("wordly_name", cleaned);
+    const activeGameUid = await resolveActiveGameUid(gameUid);
+    if (!activeGameUid) {
+      updateMessage("Unable to connect to the game server.");
+      setNameError("");
+      setShowNamePrompt(true);
+      return;
+    }
     try {
       const response = await fetch(`${API_BASE}/state`, {
         method: "POST",
@@ -707,7 +746,7 @@ const GameApp = () => {
         body: JSON.stringify({
           uid,
           name: cleaned,
-          gameUid,
+          gameUid: activeGameUid,
           state: {
             grid,
             currentRow,
