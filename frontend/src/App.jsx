@@ -461,10 +461,19 @@ const GameApp = () => {
         const response = await fetch(`${API_BASE}/guess`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ guess })
+          body: JSON.stringify({ guess, gameUid })
         });
         if (!response.ok) {
           const errorData = await response.json();
+          if (response.status === 409 && errorData.nextGameUid) {
+            resetForNewGame({
+              nextGameUid: errorData.nextGameUid,
+              nextWordLength: errorData.wordLength,
+              nextMaxGuesses: errorData.maxGuesses
+            });
+            updateMessage(errorData.error || "Reset for new game");
+            return;
+          }
           const errorText = errorData.error || "Guess rejected.";
           const isInvalidWord = errorText === "That is not a word.";
           updateMessage(errorText, { autoClear: !isInvalidWord });
@@ -510,17 +519,18 @@ const GameApp = () => {
   );
 
   useEffect(() => {
-    if (!hasLoadedStateRef.current || !playerName) {
+    if (!hasLoadedStateRef.current || !playerName || !gameUid) {
       return;
     }
     const persistState = async () => {
       try {
-        await fetch(`${API_BASE}/state`, {
+        const response = await fetch(`${API_BASE}/state`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             uid,
             name: playerName,
+            gameUid,
             state: {
               grid,
               currentRow,
@@ -534,6 +544,17 @@ const GameApp = () => {
             }
           })
         });
+        if (!response.ok) {
+          const errorData = await response.json();
+          if (response.status === 409 && errorData.nextGameUid) {
+            resetForNewGame({
+              nextGameUid: errorData.nextGameUid,
+              nextWordLength: errorData.wordLength,
+              nextMaxGuesses: errorData.maxGuesses
+            });
+            updateMessage(errorData.error || "Reset for new game");
+          }
+        }
       } catch (error) {
         updateMessage("Unable to save game.");
       }
@@ -544,6 +565,7 @@ const GameApp = () => {
     currentRow,
     gameOver,
     grid,
+    gameUid,
     isWinner,
     keyboardStatuses,
     maxGuesses,
@@ -563,11 +585,21 @@ const GameApp = () => {
           uid,
           name: playerName,
           tries,
-          duration
+          duration,
+          gameUid
         })
       });
       if (!response.ok) {
         const errorData = await response.json();
+        if (response.status === 409 && errorData.nextGameUid) {
+          resetForNewGame({
+            nextGameUid: errorData.nextGameUid,
+            nextWordLength: errorData.wordLength,
+            nextMaxGuesses: errorData.maxGuesses
+          });
+          updateMessage(errorData.error || "Reset for new game");
+          return;
+        }
         updateMessage(errorData.error || "Unable to submit score.");
         return;
       }
@@ -671,6 +703,7 @@ const GameApp = () => {
         body: JSON.stringify({
           uid,
           name: cleaned,
+          gameUid,
           state: {
             grid,
             currentRow,
@@ -685,12 +718,22 @@ const GameApp = () => {
         })
       });
       if (!response.ok) {
+        const errorData = await response.json();
+        if (response.status === 409 && errorData.nextGameUid) {
+          resetForNewGame({
+            nextGameUid: errorData.nextGameUid,
+            nextWordLength: errorData.wordLength,
+            nextMaxGuesses: errorData.maxGuesses
+          });
+          updateMessage(errorData.error || "Reset for new game");
+          setNameError("");
+          return;
+        }
         if (response.status === 409) {
           setNameError(
             "That name is already in use, choose a different name."
           );
         } else {
-          const errorData = await response.json();
           updateMessage(errorData.error || "Unable to save name.");
           setNameError("");
         }
