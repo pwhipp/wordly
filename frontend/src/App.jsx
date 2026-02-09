@@ -270,6 +270,10 @@ const GameApp = () => {
           setGameOver(state.gameOver || false);
           setIsWinner(state.isWinner || false);
           setShowScoresOverlay(state.isWinner || false);
+          if (state.isWinner) {
+            setShowHelp(false);
+            setStored("wordly_help_seen", "1");
+          }
           setStartTime(state.startTime || Date.now());
           setPlayerName(state.name || "");
           setPendingName(state.name || "");
@@ -411,6 +415,8 @@ const GameApp = () => {
           setGameOver(true);
           setIsWinner(true);
           setShowScoresOverlay(true);
+          setShowHelp(false);
+          setStored("wordly_help_seen", "1");
           updateMessage("Genius!");
           await submitScore(currentRow + 1);
         } else if (currentRow + 1 >= maxGuesses) {
