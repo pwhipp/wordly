@@ -30,7 +30,6 @@ CORS(app)
 class ScoreEntry:
     uid: str
     name: str
-    score: float
     tries: int
     duration: float
     timestamp: float
@@ -157,7 +156,14 @@ def load_scores() -> List[ScoreEntry]:
     state = load_full_game_state()
     scores = []
     for entry in state.get("scores", []):
-        scores.append(ScoreEntry(**entry))
+        if not isinstance(entry, dict):
+            continue
+        entry_data = dict(entry)
+        entry_data.pop("score", None)
+        try:
+            scores.append(ScoreEntry(**entry_data))
+        except TypeError:
+            continue
     return scores
 
 
@@ -169,7 +175,7 @@ def save_scores(scores: List[ScoreEntry]) -> None:
 
 
 def sort_scores(scores: List[ScoreEntry]) -> List[ScoreEntry]:
-    return sorted(scores, key=lambda entry: entry.score)
+    return sorted(scores, key=lambda entry: (entry.tries, entry.duration, entry.timestamp))
 
 
 def evaluate_guess(guess: str, word: str) -> List[str]:
@@ -345,11 +351,9 @@ def post_submit() -> Any:
     if any(entry.uid == uid for entry in scores):
         return jsonify({"error": "Score already submitted for this device."}), 409
 
-    score_value = round(duration / tries, 2)
     entry = ScoreEntry(
         uid=uid,
         name=name,
-        score=score_value,
         tries=tries,
         duration=duration,
         timestamp=time.time(),
