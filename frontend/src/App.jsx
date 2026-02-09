@@ -203,6 +203,8 @@ const GameApp = () => {
   const [nameError, setNameError] = useState("");
   const [scores, setScores] = useState([]);
   const [playerScore, setPlayerScore] = useState(null);
+  const [solutionWord, setSolutionWord] = useState("");
+  const [solutionDefinition, setSolutionDefinition] = useState("");
   const [startTime, setStartTime] = useState(Date.now());
   const [configLoaded, setConfigLoaded] = useState(false);
   const [gameUid, setGameUid] = useState(null);
@@ -428,6 +430,8 @@ const GameApp = () => {
       setNameError("");
       setScores([]);
       setPlayerScore(null);
+      setSolutionWord("");
+      setSolutionDefinition("");
       setStartTime(Date.now());
       setShowScoresOverlay(false);
       hasLoadedStateRef.current = false;
@@ -610,6 +614,8 @@ const GameApp = () => {
             : [];
       setScores(nextScores);
       setPlayerScore(data.entry || null);
+      setSolutionWord(data.word || "");
+      setSolutionDefinition(data.definition || "");
     } catch (error) {
       updateMessage("Unable to submit score.");
     }
@@ -874,6 +880,11 @@ const GameApp = () => {
             <p className="score-note">
               Ranked by fewest tries, then fastest time.
             </p>
+            {solutionWord && (
+              <p className="score-solution">
+                {`${solutionWord}: ${solutionDefinition}`}
+              </p>
+            )}
             <button
               type="button"
               onClick={(event) => {

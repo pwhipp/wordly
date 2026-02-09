@@ -75,6 +75,8 @@ def get_current_game_settings(session: Session) -> Dict[str, Any]:
         "gameUid": game.uid,
         "wordLength": len(game.word),
         "maxGuesses": max_guesses,
+        "word": game.word,
+        "definition": game.definition,
     }
 
 

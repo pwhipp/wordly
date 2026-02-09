@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from pathlib import Path
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -41,6 +41,8 @@ def test_get_current_game_settings(db_session):
     assert settings["wordLength"] == 5
     assert settings["maxGuesses"] == db_module.DEFAULT_MAX_GUESSES
     assert settings["gameUid"]
+    assert settings["word"] == "CRATE"
+    assert settings["definition"] == "A container."
 
 
 @pytest.mark.skipif(not SQLALCHEMY_AVAILABLE, reason="sqlalchemy not installed")
