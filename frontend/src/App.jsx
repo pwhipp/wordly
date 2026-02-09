@@ -247,7 +247,7 @@ const GameApp = () => {
     }
   }, []);
 
-  const updateMessage = (text, { autoClear = true } = {}) => {
+  const updateMessage = useCallback((text, { autoClear = true } = {}) => {
     if (messageTimeoutRef.current) {
       clearTimeout(messageTimeoutRef.current);
       messageTimeoutRef.current = null;
@@ -259,7 +259,7 @@ const GameApp = () => {
         messageTimeoutRef.current = null;
       }, 2500);
     }
-  };
+  }, []);
 
   const resolveActiveGameUid = useCallback(
     async (currentGameUid) => {
