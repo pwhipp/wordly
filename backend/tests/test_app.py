@@ -85,6 +85,28 @@ def test_submit_score_requires_name(client):
     assert payload["error"] == "name must be a string"
 
 
+def test_submit_score_preserves_players(client):
+    response = client.post(
+        "/api/state",
+        json={
+            "uid": "tom-1",
+            "name": "Tom",
+            "state": {"currentRow": 2},
+        },
+    )
+    assert response.status_code == 200
+
+    score_response = client.post(
+        "/api/submit",
+        json={"uid": "sam-1", "name": "Sam", "tries": 4, "duration": 40},
+    )
+    assert score_response.status_code == 200
+
+    tom_state = client.get("/api/state?uid=tom-1")
+    assert tom_state.status_code == 200
+    assert tom_state.get_json()["state"]["name"] == "Tom"
+
+
 def test_guess_rejected_when_not_a_word(client, monkeypatch):
     def raise_not_found(*args, **kwargs):
         raise urllib.error.HTTPError(

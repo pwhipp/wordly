@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import random
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -18,6 +19,7 @@ ADMIN_CODE_FILE = BASE_DIR / "admin_code.txt"
 CANDIDATE_WORDS_FILE = BASE_DIR / "candidate_words.txt"
 GAME_STATE_FILE = BASE_DIR / "game_state.json"
 MAX_GUESSES = 6
+STATE_LOCK = threading.RLock()
 
 app = Flask(__name__)
 CORS(app)
@@ -124,18 +126,19 @@ def normalize_game_state(data: Any) -> Dict[str, Any]:
 
 
 def load_full_game_state() -> Dict[str, Any]:
-    if not GAME_STATE_FILE.exists():
-        state = build_new_game_state()
-        save_game_state(state)
+    with STATE_LOCK:
+        if not GAME_STATE_FILE.exists():
+            state = build_new_game_state()
+            save_game_state(state)
+            return state
+        try:
+            data = json.loads(GAME_STATE_FILE.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            data = {}
+        state = normalize_game_state(data)
+        if state != data:
+            save_game_state(state)
         return state
-    try:
-        data = json.loads(GAME_STATE_FILE.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        data = {}
-    state = normalize_game_state(data)
-    if state != data:
-        save_game_state(state)
-    return state
 
 
 def load_word() -> str:
@@ -152,9 +155,10 @@ def load_scores() -> List[ScoreEntry]:
 
 
 def save_scores(scores: List[ScoreEntry]) -> None:
-    state = load_full_game_state()
-    state["scores"] = [asdict(entry) for entry in scores]
-    save_game_state(state)
+    with STATE_LOCK:
+        state = load_full_game_state()
+        state["scores"] = [asdict(entry) for entry in scores]
+        save_game_state(state)
 
 
 def sort_scores(scores: List[ScoreEntry]) -> List[ScoreEntry]:
@@ -242,13 +246,15 @@ def load_players() -> Dict[str, Dict[str, Any]]:
 
 
 def save_game_state(state: Dict[str, Any]) -> None:
-    GAME_STATE_FILE.write_text(json.dumps(state, indent=4), encoding="utf-8")
+    with STATE_LOCK:
+        GAME_STATE_FILE.write_text(json.dumps(state, indent=4), encoding="utf-8")
 
 
 def save_players(players: Dict[str, Dict[str, Any]]) -> None:
-    state = load_full_game_state()
-    state["players"] = players
-    save_game_state(state)
+    with STATE_LOCK:
+        state = load_full_game_state()
+        state["players"] = players
+        save_game_state(state)
 
 
 def load_admin_code() -> str:
