@@ -33,8 +33,8 @@ The frontend runs on `http://localhost:5173`.
 
 ## Gameplay configuration
 
-- Update the daily word by editing `backend/words.txt`.
-- Clear the hi score table by deleting `backend/scores.json` (it will be recreated on the next submission).
+- The current game state (word, definition, scores, and players) lives in `backend/game_state.json`.
+- Use the `/admin` page in the frontend to reset the game state and select a new word.
 
 ## Tests
 
