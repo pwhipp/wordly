@@ -247,7 +247,7 @@ const GameApp = () => {
     }
   }, []);
 
-  const updateMessage = (text, { autoClear = true } = {}) => {
+  const updateMessage = useCallback((text, { autoClear = true } = {}) => {
     if (messageTimeoutRef.current) {
       clearTimeout(messageTimeoutRef.current);
       messageTimeoutRef.current = null;
@@ -259,7 +259,7 @@ const GameApp = () => {
         messageTimeoutRef.current = null;
       }, 2500);
     }
-  };
+  }, []);
 
   const resolveActiveGameUid = useCallback(
     async (currentGameUid) => {
@@ -282,6 +282,21 @@ const GameApp = () => {
     },
     [setGameUid]
   );
+
+  const loadScores = useCallback(async () => {
+    try {
+      const scoresResponse = await fetch(`${API_BASE}/scores`);
+      if (!scoresResponse.ok) {
+        throw new Error("scores");
+      }
+      const scoreData = await scoresResponse.json();
+      setScores(scoreData);
+      const matchingScore = scoreData.find((entry) => entry.uid === uid);
+      setPlayerScore(matchingScore || null);
+    } catch (scoresError) {
+      updateMessage("Unable to load scores.");
+    }
+  }, [uid, updateMessage]);
 
   useEffect(() => {
     if (!configLoaded || hasLoadedStateRef.current) {
@@ -327,19 +342,7 @@ const GameApp = () => {
             setShowNamePrompt(true);
           }
           if (state.isWinner) {
-            try {
-              const scoresResponse = await fetch(`${API_BASE}/scores`);
-              if (scoresResponse.ok) {
-                const scoreData = await scoresResponse.json();
-                setScores(scoreData);
-                const matchingScore = scoreData.find(
-                  (entry) => entry.uid === uid
-                );
-                setPlayerScore(matchingScore || null);
-              }
-            } catch (scoresError) {
-              updateMessage("Unable to load scores.");
-            }
+            await loadScores();
           }
         } else {
           const storedName = getStored("wordly_name");
@@ -401,7 +404,7 @@ const GameApp = () => {
       }
     };
     fetchState();
-  }, [configLoaded, gameUid, resolveActiveGameUid, uid]);
+  }, [configLoaded, gameUid, loadScores, resolveActiveGameUid, uid]);
 
   useEffect(() => {
     if (playerScoreRef.current && scoreContainerRef.current) {
@@ -494,7 +497,12 @@ const GameApp = () => {
         const response = await fetch(`${API_BASE}/guess`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ guess, gameUid })
+          body: JSON.stringify({
+            guess,
+            gameUid,
+            uid,
+            name: playerName
+          })
         });
         if (!response.ok) {
           const errorData = await response.json();
@@ -536,7 +544,9 @@ const GameApp = () => {
           setShowHelp(false);
           setStored("wordly_help_seen", "1");
           updateMessage("Genius!");
-          await submitScore(currentRow + 1);
+          setSolutionWord(data.word || "");
+          setSolutionDefinition(data.definition || "");
+          await loadScores();
         } else if (currentRow + 1 >= maxGuesses) {
           setGameOver(true);
           updateMessage("Better luck next time.");
@@ -548,7 +558,16 @@ const GameApp = () => {
         updateMessage("Could not submit guess.");
       }
     },
-    [applyKeyboardStatus, currentRow, gameUid, maxGuesses, resetForNewGame]
+    [
+      applyKeyboardStatus,
+      currentRow,
+      gameUid,
+      loadScores,
+      maxGuesses,
+      playerName,
+      resetForNewGame,
+      uid
+    ]
   );
 
   useEffect(() => {
@@ -607,50 +626,6 @@ const GameApp = () => {
     uid,
     wordLength
   ]);
-
-  const submitScore = async (tries) => {
-    try {
-      const duration = Math.max(1, Math.round((Date.now() - startTime) / 1000));
-      const response = await fetch(`${API_BASE}/submit`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          uid,
-          name: playerName,
-          tries,
-          duration,
-          gameUid
-        })
-      });
-      if (!response.ok) {
-        const errorData = await response.json();
-        if (response.status === 409 && errorData.nextGameUid) {
-          resetForNewGame({
-            nextGameUid: errorData.nextGameUid,
-            nextWordLength: errorData.wordLength,
-            nextMaxGuesses: errorData.maxGuesses
-          });
-          updateMessage(errorData.error || "Reset for new game");
-          return;
-        }
-        updateMessage(errorData.error || "Unable to submit score.");
-        return;
-      }
-      const data = await response.json();
-      const nextScores =
-        Array.isArray(data.scores) && data.scores.length
-          ? data.scores
-          : data.entry
-            ? [data.entry]
-            : [];
-      setScores(nextScores);
-      setPlayerScore(data.entry || null);
-      setSolutionWord(data.word || "");
-      setSolutionDefinition(data.definition || "");
-    } catch (error) {
-      updateMessage("Unable to submit score.");
-    }
-  };
 
   const handleKeyPress = useCallback(
     (value) => {

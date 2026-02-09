@@ -63,6 +63,8 @@ def test_guess_evaluation(client, monkeypatch, game_uid):
     payload = response.get_json()
     assert payload["isCorrect"] is True
     assert payload["statuses"] == ["correct"] * 5
+    assert payload["word"] == "CRATE"
+    assert payload["definition"] == "A container."
 
 
 def test_submit_score(client, game_uid):
@@ -88,6 +90,43 @@ def test_submit_score(client, game_uid):
         )
         assert score is not None
         assert score.uid == "abc"
+
+
+def test_guess_correct_saves_score(client, monkeypatch, game_uid):
+    monkeypatch.setattr(
+        "game_logic.urllib.request.urlopen",
+        lambda *args, **kwargs: DummyResponse(),
+    )
+    response = client.post(
+        "/api/state",
+        json={
+            "uid": "winner-1",
+            "name": "Winner",
+            "gameUid": game_uid,
+            "state": {
+                "currentRow": 0,
+                "startTime": 1,
+            },
+        },
+    )
+    assert response.status_code == 200
+
+    guess_response = client.post(
+        "/api/guess",
+        json={
+            "uid": "winner-1",
+            "name": "Winner",
+            "guess": "crate",
+            "gameUid": game_uid,
+        },
+    )
+    assert guess_response.status_code == 200
+
+    scores_response = client.get("/api/scores")
+    assert scores_response.status_code == 200
+    payload = scores_response.get_json()
+    assert payload
+    assert payload[0]["uid"] == "winner-1"
 
 
 def test_scores_sorted_by_tries_then_duration(client, game_uid):
