@@ -196,6 +196,7 @@ const GameApp = () => {
   const [playerScore, setPlayerScore] = useState(null);
   const [startTime, setStartTime] = useState(Date.now());
   const [configLoaded, setConfigLoaded] = useState(false);
+  const [showScoresOverlay, setShowScoresOverlay] = useState(false);
 
   const scoreContainerRef = useRef(null);
   const playerScoreRef = useRef(null);
@@ -268,6 +269,7 @@ const GameApp = () => {
           setKeyboardStatuses(state.keyboardStatuses || {});
           setGameOver(state.gameOver || false);
           setIsWinner(state.isWinner || false);
+          setShowScoresOverlay(state.isWinner || false);
           setStartTime(state.startTime || Date.now());
           setPlayerName(state.name || "");
           setPendingName(state.name || "");
@@ -352,6 +354,17 @@ const GameApp = () => {
     }
   }, [scores]);
 
+  useEffect(() => {
+    if (!isWinner || showScoresOverlay) {
+      return;
+    }
+    const handleClick = () => {
+      setShowScoresOverlay(true);
+    };
+    window.addEventListener("click", handleClick);
+    return () => window.removeEventListener("click", handleClick);
+  }, [isWinner, showScoresOverlay]);
+
   const applyKeyboardStatus = useCallback((letter, status) => {
     setKeyboardStatuses((prev) => {
       const current = prev[letter];
@@ -397,6 +410,7 @@ const GameApp = () => {
         if (data.isCorrect) {
           setGameOver(true);
           setIsWinner(true);
+          setShowScoresOverlay(true);
           updateMessage("Genius!");
           await submitScore(currentRow + 1);
         } else if (currentRow + 1 >= maxGuesses) {
@@ -720,7 +734,7 @@ const GameApp = () => {
         </div>
       )}
 
-      {isWinner && (
+      {isWinner && showScoresOverlay && (
         <div className="modal">
           <div className="modal-content scores">
             <h2>Hi Scores</h2>
@@ -731,7 +745,13 @@ const GameApp = () => {
               Score equals total time taken (seconds) divided by the number of tries. Lower
               scores are better.
             </p>
-            <button type="button" onClick={() => setIsWinner(false)}>
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                setShowScoresOverlay(false);
+              }}
+            >
               Close
             </button>
           </div>
