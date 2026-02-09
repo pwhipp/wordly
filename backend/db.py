@@ -43,7 +43,34 @@ def configure_database(db_url: Optional[str] = None) -> None:
     Base.metadata.create_all(_ENGINE)
 
 
+def rebuild_database(db_url: Optional[str] = None) -> None:
+    if db_url is None:
+        db_url = build_db_url()
+    engine = create_engine(db_url, future=True, pool_pre_ping=True)
+    Base.metadata.drop_all(engine)
+    Base.metadata.create_all(engine)
+
+
 def get_session() -> Session:
     if _SESSIONMAKER is None:
         configure_database()
     return _SESSIONMAKER()
+
+
+def main() -> None:
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Database utilities.")
+    parser.add_argument(
+        "command",
+        choices=["rebuild"],
+        help="Command to execute.",
+    )
+    args = parser.parse_args()
+
+    if args.command == "rebuild":
+        rebuild_database()
+
+
+if __name__ == "__main__":
+    main()
