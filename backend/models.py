@@ -3,7 +3,17 @@ from __future__ import annotations
 from datetime import datetime
 from typing import List
 
-from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import (
+    JSON,
+    BigInteger,
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -58,8 +68,8 @@ class PlayerState(Base):
     uid: Mapped[str] = mapped_column(String(64), nullable=False)
     name: Mapped[str] = mapped_column(String(128), nullable=False)
     is_winner: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    start_time: Mapped[int | None] = mapped_column(Integer)
-    finish_time: Mapped[int | None] = mapped_column(Integer)
+    start_time: Mapped[int | None] = mapped_column(BigInteger)
+    finish_time: Mapped[int | None] = mapped_column(BigInteger)
 
     game: Mapped[Game] = relationship(back_populates="player_states")
     guesses: Mapped[List["PlayerGuess"]] = relationship(
