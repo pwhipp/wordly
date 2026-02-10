@@ -73,3 +73,37 @@ def test_list_players_sorted_with_status(db_session):
     assert players[0]["status"] == "Success"
     assert players[1]["tries"] == 1
     assert players[1]["status"] == "Fail"
+
+
+@pytest.mark.skipif(not SQLALCHEMY_AVAILABLE, reason="sqlalchemy not installed")
+def test_main_rebuild_passes_optional_overrides(monkeypatch):
+    import db as db_module
+
+    captured = {}
+
+    def fake_rebuild_database(db_url=None, word=None, definition=None):
+        captured["db_url"] = db_url
+        captured["word"] = word
+        captured["definition"] = definition
+
+    monkeypatch.setattr(db_module, "rebuild_database", fake_rebuild_database)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "db.py",
+            "rebuild",
+            "--word",
+            "slate",
+            "--definition",
+            "Custom clue",
+        ],
+    )
+
+    db_module.main()
+
+    assert captured == {
+        "db_url": None,
+        "word": "slate",
+        "definition": "Custom clue",
+    }
