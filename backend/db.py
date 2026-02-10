@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -9,7 +10,9 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
 import game_store
+from game_logic import choose_word_definition, sanitize_word
 from models import Base
+from models import Game
 from models import PlayerState
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -49,12 +52,44 @@ def configure_database(db_url: Optional[str] = None) -> None:
     Base.metadata.create_all(_ENGINE)
 
 
-def rebuild_database(db_url: Optional[str] = None) -> None:
+def _resolve_rebuild_word_definition(
+    word: Optional[str] = None,
+    definition: Optional[str] = None,
+) -> tuple[str, str]:
+    selected_word, selected_definition = choose_word_definition()
+    if word is not None:
+        selected_word = sanitize_word(word)
+    if definition is not None:
+        selected_definition = definition.strip()
+    return selected_word, selected_definition
+
+
+def rebuild_database(
+    db_url: Optional[str] = None,
+    word: Optional[str] = None,
+    definition: Optional[str] = None,
+) -> None:
     if db_url is None:
         db_url = build_db_url()
     engine = create_engine(db_url, future=True, pool_pre_ping=True)
     Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
+
+    selected_word, selected_definition = _resolve_rebuild_word_definition(
+        word=word,
+        definition=definition,
+    )
+    local_session = sessionmaker(bind=engine, expire_on_commit=False, future=True)
+    with local_session() as session:
+        game = Game(
+            uid=uuid.uuid4().hex,
+            word=selected_word,
+            definition=selected_definition,
+            max_guesses=DEFAULT_MAX_GUESSES,
+            word_length=len(selected_word),
+        )
+        session.add(game)
+        session.commit()
 
 
 def get_session() -> Session:
@@ -119,10 +154,18 @@ def main() -> None:
         choices=["rebuild", "show", "players"],
         help="Command to execute.",
     )
+    parser.add_argument(
+        "--word",
+        help="Optional override for the rebuilt game's word.",
+    )
+    parser.add_argument(
+        "--definition",
+        help="Optional override for the rebuilt game's definition.",
+    )
     args = parser.parse_args()
 
     if args.command == "rebuild":
-        rebuild_database()
+        rebuild_database(word=args.word, definition=args.definition)
         return
 
     with get_session() as session:
