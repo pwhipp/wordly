@@ -344,6 +344,21 @@ def test_config_includes_game_uid(client):
     assert payload["gameUid"]
 
 
+def test_config_includes_git_metadata(client, monkeypatch):
+    def fake_run_git_command(args):
+        if args == ["rev-parse", "--abbrev-ref", "HEAD"]:
+            return "main"
+        if args == ["rev-parse", "HEAD"]:
+            return "abc123"
+        return None
+
+    monkeypatch.setattr(app_module, "run_git_command", fake_run_git_command)
+    response = client.get("/api/config")
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["git"] == {"branch": "main", "head": "abc123"}
+
+
 def test_guess_rejected_for_inactive_game(client, monkeypatch, game_uid):
     monkeypatch.setattr(
         "game_logic.urllib.request.urlopen",
