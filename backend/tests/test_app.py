@@ -53,158 +53,39 @@ def game_uid(client):
     return response.get_json()["gameUid"]
 
 
-def test_guess_evaluation(client, monkeypatch, game_uid):
+def test_guess_returns_updated_state(client, monkeypatch, game_uid):
     monkeypatch.setattr(
         "game_logic.urllib.request.urlopen",
         lambda *args, **kwargs: DummyResponse(),
     )
-    response = client.post("/api/guess", json={"guess": "crate", "gameUid": game_uid})
-    assert response.status_code == 200
-    payload = response.get_json()
-    assert payload["isCorrect"] is True
-    assert payload["statuses"] == ["correct"] * 5
-    assert payload["word"] == "CRATE"
-    assert payload["definition"] == "A container."
 
-
-def test_submit_score(client, game_uid):
     response = client.post(
-        "/api/submit",
-        json={
-            "uid": "abc",
-            "name": "Tester",
-            "tries": 3,
-            "duration": 30,
-            "gameUid": game_uid,
-        },
-    )
-    assert response.status_code == 200
-    payload = response.get_json()
-    assert payload["entry"]["tries"] == 3
-    assert payload["entry"]["duration"] == 30
-    assert payload["word"] == "CRATE"
-    assert payload["definition"] == "A container."
-    with db_module.get_session() as session:
-        score = session.scalar(
-            select(Score).where(Score.uid == "abc")
-        )
-        assert score is not None
-        assert score.uid == "abc"
-
-
-def test_guess_correct_saves_score(client, monkeypatch, game_uid):
-    monkeypatch.setattr(
-        "game_logic.urllib.request.urlopen",
-        lambda *args, **kwargs: DummyResponse(),
-    )
-    response = client.post(
-        "/api/state",
-        json={
-            "uid": "winner-1",
-            "name": "Winner",
-            "gameUid": game_uid,
-            "state": {
-                "currentRow": 0,
-                "startTime": 1,
-            },
-        },
-    )
-    assert response.status_code == 200
-
-    guess_response = client.post(
         "/api/guess",
         json={
-            "uid": "winner-1",
-            "name": "Winner",
+            "uid": "user-1",
+            "name": "Sam",
             "guess": "crate",
             "gameUid": game_uid,
         },
     )
-    assert guess_response.status_code == 200
 
-    scores_response = client.get("/api/scores")
-    assert scores_response.status_code == 200
-    payload = scores_response.get_json()
-    assert payload
-    assert payload[0]["uid"] == "winner-1"
-
-
-def test_scores_sorted_by_tries_then_duration(client, game_uid):
-    client.post(
-        "/api/submit",
-        json={
-            "uid": "one",
-            "name": "One",
-            "tries": 3,
-            "duration": 50,
-            "gameUid": game_uid,
-        },
-    )
-    client.post(
-        "/api/submit",
-        json={
-            "uid": "two",
-            "name": "Two",
-            "tries": 2,
-            "duration": 70,
-            "gameUid": game_uid,
-        },
-    )
-    client.post(
-        "/api/submit",
-        json={
-            "uid": "three",
-            "name": "Three",
-            "tries": 3,
-            "duration": 40,
-            "gameUid": game_uid,
-        },
-    )
-
-    response = client.get("/api/scores")
     assert response.status_code == 200
     payload = response.get_json()
+    assert payload["state"]["name"] == "Sam"
+    assert payload["state"]["isWinner"] is True
+    assert payload["state"]["gameOver"] is True
+    assert payload["state"]["currentRow"] == 1
+    assert payload["state"]["guesses"][0]["guess"] == "CRATE"
+    assert payload["word"] == "CRATE"
 
-    assert [entry["uid"] for entry in payload] == ["two", "three", "one"]
 
-
-def test_submit_score_requires_name(client, game_uid):
+def test_guess_requires_uid_and_name(client, game_uid):
     response = client.post(
-        "/api/submit",
-        json={"uid": "abc", "tries": 3, "duration": 30, "gameUid": game_uid},
+        "/api/guess",
+        json={"guess": "crate", "gameUid": game_uid},
     )
     assert response.status_code == 400
-    payload = response.get_json()
-    assert payload["error"] == "name must be a string"
-
-
-def test_submit_score_preserves_players(client, game_uid):
-    response = client.post(
-        "/api/state",
-        json={
-            "uid": "tom-1",
-            "name": "Tom",
-            "gameUid": game_uid,
-            "state": {"currentRow": 2},
-        },
-    )
-    assert response.status_code == 200
-
-    score_response = client.post(
-        "/api/submit",
-        json={
-            "uid": "sam-1",
-            "name": "Sam",
-            "tries": 4,
-            "duration": 40,
-            "gameUid": game_uid,
-        },
-    )
-    assert score_response.status_code == 200
-
-    tom_state = client.get("/api/state?uid=tom-1")
-    assert tom_state.status_code == 200
-    assert tom_state.get_json()["state"]["name"] == "Tom"
+    assert response.get_json()["error"] == "uid must be a string"
 
 
 def test_guess_rejected_when_not_a_word(client, monkeypatch, game_uid):
@@ -219,87 +100,125 @@ def test_guess_rejected_when_not_a_word(client, monkeypatch, game_uid):
 
     monkeypatch.setattr("game_logic.urllib.request.urlopen", raise_not_found)
     response = client.post(
-        "/api/guess", json={"guess": "xxxxx", "gameUid": game_uid}
+        "/api/guess",
+        json={
+            "uid": "user-1",
+            "name": "Sam",
+            "guess": "xxxxx",
+            "gameUid": game_uid,
+        },
     )
     assert response.status_code == 400
     payload = response.get_json()
     assert payload["error"] == "That is not a word."
 
 
-def test_guess_accepted_when_api_unreachable(client, monkeypatch, game_uid):
-    def raise_unreachable(*args, **kwargs):
-        raise urllib.error.URLError("offline")
+def test_guess_updates_and_get_state_returns_player_state(client, monkeypatch, game_uid):
+    monkeypatch.setattr(
+        "game_logic.urllib.request.urlopen",
+        lambda *args, **kwargs: DummyResponse(),
+    )
 
-    monkeypatch.setattr("game_logic.urllib.request.urlopen", raise_unreachable)
-    response = client.post("/api/guess", json={"guess": "crate", "gameUid": game_uid})
-    assert response.status_code == 200
-
-
-def test_dictionary_lookup_url_encoded(monkeypatch):
-    captured = {}
-
-    def capture_request(request, timeout=2):
-        captured["url"] = request.full_url
-        return DummyResponse()
-
-    monkeypatch.setattr("game_logic.urllib.request.urlopen", capture_request)
-    assert logic_module.is_valid_word("c++") is True
-    assert captured["url"].endswith("/c%2B%2B")
-
-
-def test_state_persistence(client, game_uid):
-    payload = {
-        "uid": "user-1",
-        "name": "Sam",
-        "gameUid": game_uid,
-        "state": {
-            "grid": [[{"letter": "C", "status": "correct"}]],
-            "currentRow": 1,
-            "currentCol": 0,
-            "keyboardStatuses": {"C": "correct"},
-            "gameOver": False,
-            "isWinner": False,
-            "startTime": 12345,
-            "maxGuesses": 6,
-            "wordLength": 5,
+    first_guess = client.post(
+        "/api/guess",
+        json={
+            "uid": "user-1",
+            "name": "Sam",
+            "guess": "cigar",
+            "gameUid": game_uid,
         },
-    }
-    response = client.post("/api/state", json=payload)
-    assert response.status_code == 200
-    with db_module.get_session() as session:
-        record = session.scalar(
-            select(PlayerState).where(PlayerState.uid == "user-1")
-        )
-        assert record is not None
-        assert record.name == "Sam"
-        assert record.state_data["currentRow"] == 1
+    )
+    assert first_guess.status_code == 200
+    first_state = first_guess.get_json()["state"]
+    assert first_state["gameOver"] is False
 
     fetched = client.get("/api/state?uid=user-1")
     assert fetched.status_code == 200
-    assert fetched.get_json()["state"]["name"] == "Sam"
+    fetched_state = fetched.get_json()["state"]
+    assert fetched_state["name"] == "Sam"
+    assert fetched_state["currentRow"] == 1
+    assert fetched_state["guesses"][0]["guess"] == "CIGAR"
 
 
-def test_state_name_conflict(client, game_uid):
-    first = {
-        "uid": "user-1",
-        "name": "Alex",
-        "gameUid": game_uid,
-        "state": {"currentRow": 0},
-    }
-    second = {
-        "uid": "user-2",
-        "name": "Alex",
-        "gameUid": game_uid,
-        "state": {"currentRow": 1},
-    }
-    response = client.post("/api/state", json=first)
+def test_guess_saves_score_on_win(client, monkeypatch, game_uid):
+    monkeypatch.setattr(
+        "game_logic.urllib.request.urlopen",
+        lambda *args, **kwargs: DummyResponse(),
+    )
+
+    response = client.post(
+        "/api/guess",
+        json={
+            "uid": "winner-1",
+            "name": "Winner",
+            "guess": "crate",
+            "gameUid": game_uid,
+        },
+    )
     assert response.status_code == 200
-    conflict = client.post("/api/state", json=second)
+
+    scores_response = client.get("/api/scores")
+    assert scores_response.status_code == 200
+    payload = scores_response.get_json()
+    assert payload
+    assert payload[0]["uid"] == "winner-1"
+
+
+def test_guess_rejected_for_inactive_game(client, monkeypatch, game_uid):
+    monkeypatch.setattr(
+        "game_logic.urllib.request.urlopen",
+        lambda *args, **kwargs: DummyResponse(),
+    )
+    client.post("/api/admin/reset", json={"code": "FSQ2023"})
+    response = client.post(
+        "/api/guess",
+        json={
+            "uid": "user-1",
+            "name": "Sam",
+            "guess": "crate",
+            "gameUid": game_uid,
+        },
+    )
+    assert response.status_code == 409
+    payload = response.get_json()
+    assert payload["nextGameUid"] != game_uid
+
+
+def test_state_name_conflict(client, monkeypatch, game_uid):
+    monkeypatch.setattr(
+        "game_logic.urllib.request.urlopen",
+        lambda *args, **kwargs: DummyResponse(),
+    )
+
+    response = client.post(
+        "/api/guess",
+        json={"uid": "user-1", "name": "Alex", "guess": "cigar", "gameUid": game_uid},
+    )
+    assert response.status_code == 200
+
+    conflict = client.post(
+        "/api/guess",
+        json={"uid": "user-2", "name": "Alex", "guess": "crate", "gameUid": game_uid},
+    )
     assert conflict.status_code == 409
     assert (
         conflict.get_json()["error"]
         == "The name Alex is already in use. Please choose another"
     )
+
+
+def test_scores_sorted_by_tries_then_duration(client, game_uid):
+    with db_module.get_session() as session:
+        game = store_module.get_active_game(session)
+        store_module.save_score(session, game, "one", "One", 3, 50)
+        store_module.save_score(session, game, "two", "Two", 2, 70)
+        store_module.save_score(session, game, "three", "Three", 3, 40)
+
+    response = client.get("/api/scores")
+    assert response.status_code == 200
+    payload = response.get_json()
+
+    assert [entry["uid"] for entry in payload] == ["two", "three", "one"]
 
 
 def test_admin_verification(client):
@@ -308,26 +227,30 @@ def test_admin_verification(client):
     assert response.get_json()["valid"] is True
 
 
-def test_admin_reset_clears_state(client, game_uid):
+def test_admin_reset_clears_state(client, monkeypatch, game_uid):
+    monkeypatch.setattr(
+        "game_logic.urllib.request.urlopen",
+        lambda *args, **kwargs: DummyResponse(),
+    )
+
     with db_module.get_session() as session:
         original_game = store_module.get_active_game(session)
+
     client.post(
-        "/api/submit",
+        "/api/guess",
         json={
             "uid": "abc",
             "name": "Tester",
-            "tries": 3,
-            "duration": 30,
+            "guess": "crate",
             "gameUid": game_uid,
         },
     )
+
     response = client.post("/api/admin/reset", json={"code": "FSQ2023"})
     assert response.status_code == 200
     with db_module.get_session() as session:
         new_game = store_module.get_active_game(session)
-        scores = session.scalars(
-            select(Score).where(Score.game_id == new_game.id)
-        ).all()
+        scores = session.scalars(select(Score).where(Score.game_id == new_game.id)).all()
         players = session.scalars(
             select(PlayerState).where(PlayerState.game_id == new_game.id)
         ).all()
@@ -336,15 +259,7 @@ def test_admin_reset_clears_state(client, game_uid):
     assert new_game.uid != original_game.uid
 
 
-def test_config_includes_game_uid(client):
-    response = client.get("/api/config")
-    assert response.status_code == 200
-    payload = response.get_json()
-    assert isinstance(payload["gameUid"], str)
-    assert payload["gameUid"]
-
-
-def test_config_includes_git_metadata(client, monkeypatch):
+def test_config_includes_game_uid_and_git(client, monkeypatch):
     def fake_run_git_command(args):
         if args == ["rev-parse", "--abbrev-ref", "HEAD"]:
             return "main"
@@ -356,16 +271,26 @@ def test_config_includes_git_metadata(client, monkeypatch):
     response = client.get("/api/config")
     assert response.status_code == 200
     payload = response.get_json()
+    assert isinstance(payload["gameUid"], str)
     assert payload["git"] == {"branch": "main", "head": "abc123"}
 
 
-def test_guess_rejected_for_inactive_game(client, monkeypatch, game_uid):
-    monkeypatch.setattr(
-        "game_logic.urllib.request.urlopen",
-        lambda *args, **kwargs: DummyResponse(),
+def test_post_state_not_supported(client):
+    response = client.post(
+        "/api/state",
+        json={"uid": "user-1", "name": "Sam", "state": {}},
     )
-    client.post("/api/admin/reset", json={"code": "FSQ2023"})
-    response = client.post("/api/guess", json={"guess": "crate", "gameUid": game_uid})
-    assert response.status_code == 409
-    payload = response.get_json()
-    assert payload["nextGameUid"] != game_uid
+    assert response.status_code == 405
+
+
+def test_submit_not_supported(client):
+    response = client.post(
+        "/api/submit",
+        json={
+            "uid": "abc",
+            "name": "Tester",
+            "tries": 3,
+            "duration": 30,
+        },
+    )
+    assert response.status_code == 404

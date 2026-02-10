@@ -1,14 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   DEFAULT_KEYBOARD,
-  STATUS_PRIORITY,
   STORAGE_KEYS
 } from "../config";
 import {
   fetchConfig,
   fetchScores,
   fetchState,
-  persistState,
   submitGuessRequest
 } from "../services/api";
 import {
@@ -41,7 +39,6 @@ export default function GameApp() {
   const [playerScore, setPlayerScore] = useState(null);
   const [solutionWord, setSolutionWord] = useState("");
   const [solutionDefinition, setSolutionDefinition] = useState("");
-  const [startTime, setStartTime] = useState(Date.now());
   const [configLoaded, setConfigLoaded] = useState(false);
   const [gameUid, setGameUid] = useState(null);
   const [showScoresOverlay, setShowScoresOverlay] = useState(false);
@@ -72,22 +69,6 @@ export default function GameApp() {
         setMessage("");
         messageTimeoutRef.current = null;
       }, 2500);
-    }
-  }, []);
-
-  const resolveActiveGameUid = useCallback(async (currentGameUid) => {
-    const storedGameUid = getStored(STORAGE_KEYS.gameUid);
-    const fallbackGameUid = currentGameUid || storedGameUid;
-
-    try {
-      const configData = await fetchConfig();
-      if (configData.gameUid && configData.gameUid !== fallbackGameUid) {
-        setGameUid(configData.gameUid);
-        setStored(STORAGE_KEYS.gameUid, configData.gameUid);
-      }
-      return configData.gameUid || fallbackGameUid;
-    } catch {
-      return fallbackGameUid || null;
     }
   }, []);
 
@@ -135,22 +116,39 @@ export default function GameApp() {
       setPlayerScore(null);
       setSolutionWord("");
       setSolutionDefinition("");
-      setStartTime(Date.now());
       setShowScoresOverlay(false);
       hasLoadedStateRef.current = false;
     },
     [maxGuesses, wordLength]
   );
 
-  const applyKeyboardStatus = useCallback((letter, status) => {
-    setKeyboardStatuses((previousStatuses) => {
-      const current = previousStatuses[letter];
-      if (!current || STATUS_PRIORITY[status] > STATUS_PRIORITY[current]) {
-        return { ...previousStatuses, [letter]: status };
+  const hydrateGridFromGuesses = useCallback(
+    (guesses, nextMaxGuesses, nextWordLength) => {
+      const nextGrid = createEmptyGrid(nextMaxGuesses, nextWordLength);
+      if (!Array.isArray(guesses)) {
+        return nextGrid;
       }
-      return previousStatuses;
-    });
-  }, []);
+      guesses.forEach((entry, guessIndex) => {
+        if (!entry || typeof entry.guess !== "string" || !Array.isArray(entry.statuses)) {
+          return;
+        }
+        if (guessIndex >= nextGrid.length) {
+          return;
+        }
+        entry.guess
+          .slice(0, nextWordLength)
+          .split("")
+          .forEach((letter, letterIndex) => {
+            nextGrid[guessIndex][letterIndex] = {
+              letter,
+              status: entry.statuses[letterIndex] || ""
+            };
+          });
+      });
+      return nextGrid;
+    },
+    []
+  );
 
   const submitGuess = useCallback(
     async (guess) => {
@@ -171,20 +169,24 @@ export default function GameApp() {
         }
 
         const data = await submitGuessRequest({ guess, gameUid, uid, name: playerName });
+        const state = data.state;
+        if (!state) {
+          updateMessage("Unable to update player state.");
+          return;
+        }
 
-        setGrid((previousGrid) => {
-          const next = previousGrid.map((row) => row.map((cell) => ({ ...cell })));
-          data.statuses.forEach((status, index) => {
-            next[currentRow][index] = { letter: guess[index], status };
-          });
-          return next;
-        });
+        const nextWordLength = state.wordLength || wordLength;
+        const nextMaxGuesses = state.maxGuesses || maxGuesses;
 
-        data.statuses.forEach((status, index) => applyKeyboardStatus(guess[index], status));
-
-        if (data.isCorrect) {
-          setGameOver(true);
-          setIsWinner(true);
+        setWordLength(nextWordLength);
+        setMaxGuesses(nextMaxGuesses);
+        setGrid(hydrateGridFromGuesses(state.guesses, nextMaxGuesses, nextWordLength));
+        setCurrentRow(state.currentRow ?? 0);
+        setCurrentCol(state.currentCol ?? 0);
+        setKeyboardStatuses(state.keyboardStatuses || {});
+        setGameOver(Boolean(state.gameOver));
+        setIsWinner(Boolean(state.isWinner));
+        if (state.isWinner) {
           setShowScoresOverlay(true);
           setShowHelp(false);
           setStored(STORAGE_KEYS.helpSeen, "1");
@@ -192,12 +194,10 @@ export default function GameApp() {
           setSolutionWord(data.word || "");
           setSolutionDefinition(data.definition || "");
           await loadScores();
-        } else if (currentRow + 1 >= maxGuesses) {
-          setGameOver(true);
+        } else if (state.gameOver) {
           updateMessage("Better luck next time.");
-        } else {
-          setCurrentRow((row) => row + 1);
-          setCurrentCol(0);
+          setSolutionWord(data.word || "");
+          setSolutionDefinition(data.definition || "");
         }
       } catch (error) {
         if (error.status === 409 && error.data?.nextGameUid) {
@@ -218,9 +218,8 @@ export default function GameApp() {
       }
     },
     [
-      applyKeyboardStatus,
-      currentRow,
       gameUid,
+      hydrateGridFromGuesses,
       loadScores,
       maxGuesses,
       playerName,
@@ -262,12 +261,15 @@ export default function GameApp() {
         const data = await fetchState(uid);
         if (data.state) {
           const state = data.state;
+          const nextWordLength = state.wordLength || wordLength;
+          const nextMaxGuesses = state.maxGuesses || maxGuesses;
+
           if (gameUid) {
             setStored(STORAGE_KEYS.gameUid, gameUid);
           }
-          setWordLength(state.wordLength || wordLength);
-          setMaxGuesses(state.maxGuesses || maxGuesses);
-          setGrid(state.grid || createEmptyGrid(maxGuesses, wordLength));
+          setWordLength(nextWordLength);
+          setMaxGuesses(nextMaxGuesses);
+          setGrid(hydrateGridFromGuesses(state.guesses, nextMaxGuesses, nextWordLength));
           setCurrentRow(state.currentRow ?? 0);
           setCurrentCol(state.currentCol ?? 0);
           setKeyboardStatuses(state.keyboardStatuses || {});
@@ -278,7 +280,6 @@ export default function GameApp() {
             setShowHelp(false);
             setStored(STORAGE_KEYS.helpSeen, "1");
           }
-          setStartTime(state.startTime || Date.now());
           setPlayerName(state.name || "");
           setPendingName(state.name || "");
           setNameError("");
@@ -298,45 +299,10 @@ export default function GameApp() {
             return;
           }
 
-          const activeGameUid = await resolveActiveGameUid(gameUid);
-          if (!activeGameUid) {
-            updateMessage("Unable to connect to the game server.");
-            setPendingName(storedName);
-            setShowNamePrompt(true);
-            return;
-          }
-
-          try {
-            await persistState({
-              uid,
-              name: storedName,
-              gameUid: activeGameUid,
-              state: {
-                grid: createEmptyGrid(maxGuesses, wordLength),
-                currentRow: 0,
-                currentCol: 0,
-                keyboardStatuses: {},
-                gameOver: false,
-                isWinner: false,
-                startTime,
-                maxGuesses,
-                wordLength
-              }
-            });
-            setPlayerName(storedName);
-            setPendingName(storedName);
-            setNameError("");
-            setShowNamePrompt(false);
-          } catch (error) {
-            if (error.status === 409) {
-              setNameError("That name is already in use, choose a different name.");
-              setPlayerName("");
-            } else {
-              updateMessage("Unable to save name.");
-            }
-            setPendingName(storedName);
-            setShowNamePrompt(true);
-          }
+          setPlayerName(storedName);
+          setPendingName(storedName);
+          setNameError("");
+          setShowNamePrompt(false);
         }
       } catch {
         updateMessage("Unable to load saved game.");
@@ -349,10 +315,9 @@ export default function GameApp() {
   }, [
     configLoaded,
     gameUid,
+    hydrateGridFromGuesses,
     loadScores,
     maxGuesses,
-    resolveActiveGameUid,
-    startTime,
     uid,
     updateMessage,
     wordLength
@@ -372,55 +337,6 @@ export default function GameApp() {
     window.addEventListener("click", handleClick);
     return () => window.removeEventListener("click", handleClick);
   }, [isWinner, showScoresOverlay]);
-
-  useEffect(() => {
-    if (!hasLoadedStateRef.current || !playerName || !gameUid) {
-      return;
-    }
-
-    persistState({
-      uid,
-      name: playerName,
-      gameUid,
-      state: {
-        grid,
-        currentRow,
-        currentCol,
-        keyboardStatuses,
-        gameOver,
-        isWinner,
-        startTime,
-        maxGuesses,
-        wordLength
-      }
-    }).catch((error) => {
-      if (error.status === 409 && error.data?.nextGameUid) {
-        resetForNewGame({
-          nextGameUid: error.data.nextGameUid,
-          nextWordLength: error.data.wordLength,
-          nextMaxGuesses: error.data.maxGuesses
-        });
-        updateMessage(error.message || "Reset for new game");
-        return;
-      }
-      updateMessage("Unable to save game.");
-    });
-  }, [
-    currentCol,
-    currentRow,
-    gameOver,
-    gameUid,
-    grid,
-    isWinner,
-    keyboardStatuses,
-    maxGuesses,
-    playerName,
-    resetForNewGame,
-    startTime,
-    uid,
-    updateMessage,
-    wordLength
-  ]);
 
   const handleKeyPress = useCallback(
     (value) => {
@@ -505,55 +421,11 @@ export default function GameApp() {
 
     const cleaned = pendingName.trim();
     setStored(STORAGE_KEYS.playerName, cleaned);
-    const activeGameUid = await resolveActiveGameUid(gameUid);
 
-    if (!activeGameUid) {
-      updateMessage("Unable to connect to the game server.");
-      setNameError("");
-      setShowNamePrompt(true);
-      return;
-    }
-
-    try {
-      await persistState({
-        uid,
-        name: cleaned,
-        gameUid: activeGameUid,
-        state: {
-          grid,
-          currentRow,
-          currentCol,
-          keyboardStatuses,
-          gameOver,
-          isWinner,
-          startTime,
-          maxGuesses,
-          wordLength
-        }
-      });
-      setPlayerName(cleaned);
-      setPendingName(cleaned);
-      setNameError("");
-      setShowNamePrompt(false);
-    } catch (error) {
-      if (error.status === 409 && error.data?.nextGameUid) {
-        resetForNewGame({
-          nextGameUid: error.data.nextGameUid,
-          nextWordLength: error.data.wordLength,
-          nextMaxGuesses: error.data.maxGuesses
-        });
-        updateMessage(error.message || "Reset for new game");
-        setNameError("");
-        return;
-      }
-      if (error.status === 409) {
-        setNameError("That name is already in use, choose a different name.");
-      } else {
-        updateMessage(error.message || "Unable to save name.");
-        setNameError("");
-      }
-      setShowNamePrompt(true);
-    }
+    setPlayerName(cleaned);
+    setPendingName(cleaned);
+    setNameError("");
+    setShowNamePrompt(false);
   };
 
   const closeHelp = () => {

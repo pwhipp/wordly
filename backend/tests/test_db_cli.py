@@ -51,25 +51,25 @@ def test_list_players_sorted_with_status(db_session):
     import game_store
 
     game = game_store.get_active_game(db_session)
-    game_store.upsert_player_state(
-        db_session,
-        game,
+    game_store.apply_guess_for_player(
+        session=db_session,
+        game=game,
         uid="alpha",
         name="alice",
-        state_data={"currentRow": 2, "gameOver": True, "isWinner": True},
+        guess="CRATE",
     )
-    game_store.upsert_player_state(
-        db_session,
-        game,
+    game_store.apply_guess_for_player(
+        session=db_session,
+        game=game,
         uid="beta",
         name="Bob",
-        state_data={"currentRow": 1, "gameOver": False, "isWinner": False},
+        guess="BRICK",
     )
 
     players = db_module.list_players(db_session)
 
     assert [player["name"] for player in players] == ["alice", "Bob"]
-    assert players[0]["tries"] == 3
+    assert players[0]["tries"] == 1
     assert players[0]["status"] == "Success"
     assert players[1]["tries"] == 1
     assert players[1]["status"] == "Fail"

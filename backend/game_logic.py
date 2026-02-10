@@ -117,7 +117,47 @@ def sanitize_state_payload(state: Any) -> Dict[str, Any]:
         sanitized["maxGuesses"] = sanitize_int(state["maxGuesses"], "maxGuesses")
     if "wordLength" in state:
         sanitized["wordLength"] = sanitize_int(state["wordLength"], "wordLength")
+    if "finishTime" in state:
+        sanitized["finishTime"] = sanitize_int(state["finishTime"], "finishTime")
     return sanitized
+
+
+def extract_complete_guesses_from_grid(
+    grid: Any, word_length: int
+) -> list[dict[str, Any]]:
+    if not isinstance(grid, list):
+        return []
+    extracted: list[dict[str, Any]] = []
+    for row_index, row in enumerate(grid, start=1):
+        if not isinstance(row, list) or len(row) != word_length:
+            continue
+        letters: list[str] = []
+        statuses: list[str] = []
+        complete_row = True
+        for cell in row:
+            if not isinstance(cell, dict):
+                complete_row = False
+                break
+            letter = cell.get("letter")
+            status = cell.get("status")
+            if not isinstance(letter, str) or len(letter.strip()) != 1:
+                complete_row = False
+                break
+            if not isinstance(status, str) or not status.strip():
+                complete_row = False
+                break
+            letters.append(letter.strip().upper())
+            statuses.append(status.strip())
+        if not complete_row:
+            continue
+        extracted.append(
+            {
+                "guessNumber": row_index,
+                "guess": "".join(letters),
+                "statuses": statuses,
+            }
+        )
+    return extracted
 
 
 def build_user_state(name: str, state: Dict[str, Any]) -> Dict[str, Any]:

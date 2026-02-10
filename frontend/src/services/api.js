@@ -36,13 +36,6 @@ export const resetGame = (code) =>
 export const fetchState = (uid) =>
   request(`/state?uid=${encodeURIComponent(uid)}`);
 
-export const persistState = (payload) =>
-  request("/state", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload)
-  });
-
 export const submitGuessRequest = (payload) =>
   request("/guess", {
     method: "POST",
