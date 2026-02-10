@@ -18,6 +18,9 @@ BACKEND_DIR="${WORDLY_REPO_DIR}/backend"
 FRONTEND_DIR="${WORDLY_REPO_DIR}/frontend"
 CONFIG_URL="${CONFIG_URL:-https://wordly.qclub.au/api/config}"
 
+section "Stopping wordly service as invoking user"
+run_cmd sudo systemctl stop wordly
+
 section "Updating repository as wordly user"
 run_cmd sudo -u wordly -H bash -lc "cd ${WORDLY_REPO_DIR} && git pull"
 
@@ -32,8 +35,13 @@ run_cmd sudo -u wordly -H bash -lc "cd ${FRONTEND_DIR} \
   && npm install \
   && VITE_API_BASE_URL=/api npm run build"
 
-section "Restarting services as invoking user"
-run_cmd sudo systemctl restart wordly
+section "Rebuilding database as wordly user"
+run_cmd sudo -u wordly -H bash -lc "cd ${BACKEND_DIR} \
+  && . .venv/bin/activate \
+  && python db.py rebuild"
+
+section "Starting services as invoking user"
+run_cmd sudo systemctl start wordly
 run_cmd sudo systemctl restart nginx
 
 section "Verifying deployed git metadata"
