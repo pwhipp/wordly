@@ -15,7 +15,7 @@ import app as app_module  # noqa: E402
 import db as db_module  # noqa: E402
 import game_logic as logic_module  # noqa: E402
 import game_store as store_module  # noqa: E402
-from models import PlayerState, Score  # noqa: E402
+from models import PlayerGuess, PlayerKeyboardStatus, PlayerState, Score  # noqa: E402
 
 
 class DummyResponse:
@@ -253,7 +253,15 @@ def test_state_persistence(client, game_uid):
         "name": "Sam",
         "gameUid": game_uid,
         "state": {
-            "grid": [[{"letter": "C", "status": "correct"}]],
+            "grid": [
+                [
+                    {"letter": "C", "status": "correct"},
+                    {"letter": "R", "status": "present"},
+                    {"letter": "A", "status": "absent"},
+                    {"letter": "T", "status": "absent"},
+                    {"letter": "E", "status": "absent"},
+                ]
+            ],
             "currentRow": 1,
             "currentCol": 0,
             "keyboardStatuses": {"C": "correct"},
@@ -272,11 +280,55 @@ def test_state_persistence(client, game_uid):
         )
         assert record is not None
         assert record.name == "Sam"
-        assert record.state_data["currentRow"] == 1
+        assert record.is_winner is False
+        stored_guess = session.scalar(
+            select(PlayerGuess).where(PlayerGuess.player_state_id == record.id)
+        )
+        assert stored_guess is not None
+        assert stored_guess.guess_number == 1
+        keyboard_status = session.scalar(
+            select(PlayerKeyboardStatus).where(
+                PlayerKeyboardStatus.player_state_id == record.id,
+                PlayerKeyboardStatus.letter == "C",
+            )
+        )
+        assert keyboard_status is not None
+        assert keyboard_status.status == "correct"
 
     fetched = client.get("/api/state?uid=user-1")
     assert fetched.status_code == 200
     assert fetched.get_json()["state"]["name"] == "Sam"
+
+
+def test_state_rejects_non_contiguous_guesses(client, game_uid):
+    response = client.post(
+        "/api/state",
+        json={
+            "uid": "user-5",
+            "name": "Jess",
+            "gameUid": game_uid,
+            "state": {
+                "grid": [
+                    [
+                        {"letter": "", "status": ""},
+                        {"letter": "", "status": ""},
+                        {"letter": "", "status": ""},
+                        {"letter": "", "status": ""},
+                        {"letter": "", "status": ""},
+                    ],
+                    [
+                        {"letter": "C", "status": "correct"},
+                        {"letter": "R", "status": "correct"},
+                        {"letter": "A", "status": "correct"},
+                        {"letter": "T", "status": "correct"},
+                        {"letter": "E", "status": "correct"},
+                    ],
+                ]
+            },
+        },
+    )
+    assert response.status_code == 400
+    assert "contiguous" in response.get_json()["error"]
 
 
 def test_state_name_conflict(client, game_uid):

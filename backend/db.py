@@ -5,8 +5,7 @@ import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import select
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
 import game_store
@@ -66,30 +65,20 @@ def get_session() -> Session:
 
 def get_current_game_settings(session: Session) -> Dict[str, Any]:
     game = game_store.get_active_game(session)
-    max_guesses = DEFAULT_MAX_GUESSES
-    state = session.scalar(
-        select(PlayerState.state_data).where(PlayerState.game_id == game.id)
-    )
-    if isinstance(state, dict):
-        state_max_guesses = state.get("maxGuesses")
-        if isinstance(state_max_guesses, int):
-            max_guesses = state_max_guesses
     return {
         "gameUid": game.uid,
-        "wordLength": len(game.word),
-        "maxGuesses": max_guesses,
+        "wordLength": game.word_length,
+        "maxGuesses": game.max_guesses,
         "word": game.word,
         "definition": game.definition,
     }
 
 
-def _normalize_tries(state_data: Dict[str, Any]) -> int:
-    current_row = state_data.get("currentRow", 0)
+def _normalize_tries(player_state: PlayerState) -> int:
+    current_row = len(player_state.guesses)
     if not isinstance(current_row, int) or current_row < 0:
         current_row = 0
-    game_over = state_data.get("gameOver") is True
-    tries = current_row + (1 if game_over else 0)
-    return max(tries, 0)
+    return max(current_row, 0)
 
 
 def list_players(session: Session) -> List[Dict[str, Any]]:
@@ -99,9 +88,8 @@ def list_players(session: Session) -> List[Dict[str, Any]]:
     ).all()
     results = []
     for player in players:
-        state_data = player.state_data or {}
-        tries = _normalize_tries(state_data)
-        status = "Success" if state_data.get("isWinner") is True else "Fail"
+        tries = _normalize_tries(player)
+        status = "Success" if player.is_winner is True else "Fail"
         results.append({"name": player.name, "tries": tries, "status": status})
     results.sort(key=lambda entry: entry["name"].casefold())
     return results

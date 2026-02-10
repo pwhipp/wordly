@@ -30,8 +30,8 @@ def build_game_mismatch_payload(active_game: Any) -> dict:
     return {
         "error": "Game has reset. Please start a new game.",
         "nextGameUid": active_game.uid,
-        "wordLength": len(active_game.word),
-        "maxGuesses": MAX_GUESSES,
+        "wordLength": active_game.word_length,
+        "maxGuesses": active_game.max_guesses,
     }
 
 
@@ -56,6 +56,20 @@ def compute_score_from_state(state: dict) -> Tuple[int, float]:
     tries = current_row + 1
     start_time = state.get("startTime")
     now = time.time()
+    if isinstance(start_time, int):
+        if start_time > 10_000_000_000:
+            duration = max(1.0, (now * 1000 - start_time) / 1000)
+        else:
+            duration = max(1.0, now - start_time)
+    else:
+        duration = 1.0
+    return tries, duration
+
+
+def compute_score_from_record(player_record: Any) -> Tuple[int, float]:
+    tries = max(len(player_record.guesses), 1)
+    now = time.time()
+    start_time = player_record.start_time
     if isinstance(start_time, int):
         if start_time > 10_000_000_000:
             duration = max(1.0, (now * 1000 - start_time) / 1000)
@@ -99,8 +113,8 @@ def get_config() -> Any:
         game = game_store.get_active_game(session)
         return jsonify(
             {
-                "wordLength": len(game.word),
-                "maxGuesses": MAX_GUESSES,
+                "wordLength": game.word_length,
+                "maxGuesses": game.max_guesses,
                 "gameUid": game.uid,
                 "git": get_git_metadata(),
             }
@@ -137,9 +151,7 @@ def post_guess() -> Any:
                     session, game, uid
                 )
                 if player_record:
-                    tries, duration = compute_score_from_state(
-                        player_record.state_data or {}
-                    )
+                    tries, duration = compute_score_from_record(player_record)
                     player_name = player_record.name
                 elif name:
                     tries, duration = 1, 1.0
@@ -238,9 +250,23 @@ def post_state() -> Any:
                 ),
                 409,
             )
-        state = game_store.upsert_player_state(
-            session, game, uid, name, sanitized_state
+        guesses = game_logic.extract_complete_guesses_from_grid(
+            sanitized_state.get("grid", []), game.word_length
         )
+        try:
+            state = game_store.upsert_player_state(
+                session=session,
+                game=game,
+                uid=uid,
+                name=name,
+                is_winner=sanitized_state.get("isWinner", False),
+                start_time=sanitized_state.get("startTime"),
+                finish_time=sanitized_state.get("finishTime"),
+                guesses=guesses,
+                keyboard_statuses=sanitized_state.get("keyboardStatuses", {}),
+            )
+        except game_store.InvalidGuessSequenceError as exc:
+            return jsonify({"error": str(exc)}), 400
         return jsonify({"state": state})
 
 
