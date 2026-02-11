@@ -5,6 +5,7 @@ import os
 import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
@@ -14,10 +15,12 @@ from game_logic import choose_word_definition, sanitize_word
 from models import Base
 from models import Game
 from models import PlayerState
+from models import set_db_timezone
 
 BASE_DIR = Path(__file__).resolve().parent
 DB_CONFIG_FILE = BASE_DIR / "db_config.json"
 DEFAULT_MAX_GUESSES = 6
+DEFAULT_DB_TIMEZONE = "UTC"
 
 _ENGINE = None
 _SESSIONMAKER: Optional[sessionmaker] = None
@@ -27,6 +30,29 @@ def load_db_config() -> Dict[str, Any]:
     if not DB_CONFIG_FILE.exists():
         raise FileNotFoundError("db_config.json is missing.")
     return json.loads(DB_CONFIG_FILE.read_text(encoding="utf-8"))
+
+
+def get_database_timezone_name() -> str:
+    if not DB_CONFIG_FILE.exists():
+        return DEFAULT_DB_TIMEZONE
+
+    timezone_name = load_db_config().get("timezone", DEFAULT_DB_TIMEZONE)
+    if not isinstance(timezone_name, str):
+        return DEFAULT_DB_TIMEZONE
+
+    return timezone_name.strip() or DEFAULT_DB_TIMEZONE
+
+
+def configure_database_timezone() -> str:
+    timezone_name = get_database_timezone_name()
+
+    try:
+        ZoneInfo(timezone_name)
+    except ZoneInfoNotFoundError as exc:
+        raise ValueError(f"Invalid database timezone: {timezone_name}") from exc
+
+    set_db_timezone(timezone_name)
+    return timezone_name
 
 
 def build_db_url() -> str:
@@ -45,6 +71,7 @@ def build_db_url() -> str:
 
 def configure_database(db_url: Optional[str] = None) -> None:
     global _ENGINE, _SESSIONMAKER
+    configure_database_timezone()
     if db_url is None:
         db_url = build_db_url()
     _ENGINE = create_engine(db_url, future=True, pool_pre_ping=True)
@@ -69,6 +96,7 @@ def rebuild_database(
     word: Optional[str] = None,
     definition: Optional[str] = None,
 ) -> None:
+    configure_database_timezone()
     if db_url is None:
         db_url = build_db_url()
     engine = create_engine(db_url, future=True, pool_pre_ping=True)
