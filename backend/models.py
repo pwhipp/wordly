@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from typing import List
 
 from sqlalchemy import (
@@ -21,6 +22,18 @@ class Base(DeclarativeBase):
     pass
 
 
+_DB_TIMEZONE = ZoneInfo("UTC")
+
+
+def set_db_timezone(timezone_name: str) -> None:
+    global _DB_TIMEZONE
+    _DB_TIMEZONE = ZoneInfo(timezone_name)
+
+
+def get_current_db_time() -> datetime:
+    return datetime.now(tz=_DB_TIMEZONE)
+
+
 class Game(Base):
     __tablename__ = "game"
 
@@ -31,7 +44,7 @@ class Game(Base):
     max_guesses: Mapped[int] = mapped_column(Integer, nullable=False, default=6)
     word_length: Mapped[int] = mapped_column(Integer, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=datetime.utcnow
+        DateTime(timezone=True), default=get_current_db_time
     )
 
     scores: Mapped[List["Score"]] = relationship(

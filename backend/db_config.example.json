@@ -4,5 +4,6 @@
     "port": 5432,
     "database": "wordly",
     "user": "wordly",
-    "password": "change-me"
+    "password": "change-me",
+    "timezone": "Australia/Brisbane"
 }

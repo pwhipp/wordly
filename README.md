@@ -24,7 +24,7 @@ The backend runs on `http://localhost:5000`.
 ### Database (Postgres)
 
 The backend expects a Postgres database. Copy the example config and update it with your
-credentials:
+credentials (including an IANA timezone such as `Australia/Brisbane`):
 
 ```bash
 cd backend
