@@ -4,8 +4,7 @@ frontend/node_modules/
 frontend/dist/
 frontend/.vite/
 backend/admin_code.txt
-backend/game_state.json
-backend/scores.json
+backend/candidate_words.txt
 backend/db_config.json
 __pycache__/
 *.pyc
