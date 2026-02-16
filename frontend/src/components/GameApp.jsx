@@ -48,6 +48,7 @@ export default function GameApp() {
   const messageTimeoutRef = useRef(null);
   const hasLoadedStateRef = useRef(false);
   const helpModalRef = useRef(null);
+  const guessSubmissionInFlightRef = useRef(false);
 
   const uid = useMemo(() => {
     let stored = getStored(STORAGE_KEYS.uid);
@@ -117,6 +118,7 @@ export default function GameApp() {
       setSolutionWord("");
       setSolutionDefinition("");
       setShowScoresOverlay(false);
+      guessSubmissionInFlightRef.current = false;
       hasLoadedStateRef.current = false;
     },
     [maxGuesses, wordLength]
@@ -152,6 +154,12 @@ export default function GameApp() {
 
   const submitGuess = useCallback(
     async (guess) => {
+      if (guessSubmissionInFlightRef.current) {
+        return;
+      }
+
+      guessSubmissionInFlightRef.current = true;
+
       try {
         const configData = await fetchConfig();
         const storedGameUid = getStored(STORAGE_KEYS.gameUid);
@@ -215,6 +223,8 @@ export default function GameApp() {
         if (isInvalidWord) {
           setInvalidGuessActive(true);
         }
+      } finally {
+        guessSubmissionInFlightRef.current = false;
       }
     },
     [
